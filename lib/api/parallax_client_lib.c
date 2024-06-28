@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "../include/parallax/parallax.h"
 #include "../allocator/kv_format.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/persistent_operations.h"
@@ -22,6 +21,7 @@
 #include "../btree/kv_pairs.h"
 #include "../btree/set_options.h"
 #include "../common/common.h"
+#include "../include/parallax/parallax.h"
 #include "../include/parallax/structures.h"
 #include "../lib/allocator/device_structures.h"
 #include "../lib/scanner/scanner_mode.h"
@@ -65,13 +65,11 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 //cppcheck-suppress constParameterPointer
 struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
-	
 }
 
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
 					   bool append_to_log, bool abort_on_compaction)
 {
-
 }
 
 // cppcheck-suppress constParameterPointer
@@ -89,7 +87,6 @@ void par_get_serialized(par_handle handle, char *key_serialized, struct par_valu
 // cppcheck-suppress constParameterPointer
 par_ret_code par_exists(par_handle handle, struct par_key *key)
 {
-	
 }
 
 // cppcheck-suppress unusedFunction
@@ -144,20 +141,19 @@ int par_is_valid(par_scanner sc)
 
 struct par_key par_get_key(par_scanner sc)
 {
-	struct par_key key = {0, NULL};
+	struct par_key key = { 0, NULL };
 	return key;
 }
 
 struct par_value par_get_value(par_scanner sc)
 {
-	struct par_value value = {0,0,NULL};
+	struct par_value value = { 0, 0, NULL };
 	return value;
 }
 
 // cppcheck-suppress unusedFunction
 par_ret_code par_sync(par_handle handle)
 {
-	
 }
 
 /**
@@ -166,7 +162,6 @@ par_ret_code par_sync(par_handle handle)
  */
 struct par_options_desc *par_get_default_options(void)
 {
-	
 }
 
 void par_flush_superblock(par_handle handle)

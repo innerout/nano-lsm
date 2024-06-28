@@ -1,6 +1,8 @@
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
+option(TCP "Enable TCP server" OFF)
+
 if(PARALLAX_BUILD_TESTING)
   set(LIB_TEST_FILES
       tiresias.c
@@ -43,6 +45,13 @@ if(PARALLAX_BUILD_TESTING)
   add_executable(test_fractal_layout test_fractal_layout.c
                                      ../lib/btree/compaction/fractal_leaf.c)
   target_link_libraries(test_fractal_layout "${PROJECT_NAME}")
+
+  add_executable(test_server_simple test_server_simple.c)
+  if(TCP)
+    target_link_libraries(test_server_simple "${PROJECT_NAME}_server")
+  else()
+    target_link_libraries(test_server_simple "${PROJECT_NAME}")
+  endif()
 
   find_library(BDB_LIBRARY NAMES libdb.so)
 
