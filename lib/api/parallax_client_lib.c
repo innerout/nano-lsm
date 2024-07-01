@@ -26,6 +26,10 @@
 #include "../lib/allocator/device_structures.h"
 #include "../lib/scanner/scanner_mode.h"
 #include "../scanner/scanner.h"
+
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
 #include <assert.h>
 #include <log.h>
 #include <spin_loop.h>
@@ -75,7 +79,6 @@ struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_k
 // cppcheck-suppress constParameterPointer
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
 {
-	printf("a\n");
 	return;
 }
 

@@ -28,8 +28,8 @@ extern uint32_t GF;
  * @param argv
  * @return int
  */
-extern int server_parse_argv_opts(sConfig __restrict__ *__restrict__ sConfig, int argc,
-				  char *__restrict__ *__restrict__ argv) __attribute_warn_unused_result__;
+int server_parse_argv_opts(sConfig __restrict__ *__restrict__ sConfig, int argc,
+			   char *__restrict__ *__restrict__ argv) __attribute_warn_unused_result__;
 
 /**
  * @brief
@@ -37,7 +37,7 @@ extern int server_parse_argv_opts(sConfig __restrict__ *__restrict__ sConfig, in
  * @param shandle
  * @return int
  */
-extern int server_print_config(sHandle shandle);
+int server_print_config(sHandle shandle);
 
 /**
  * @brief Initializes an sHandle Object from the given sConfig Object, which must have been initialized with
@@ -51,8 +51,8 @@ extern int server_print_config(sHandle shandle);
  * @param server_config
  * @return int
  */
-extern int server_handle_init(sHandle __restrict__ *__restrict__ server_handle,
-			      sConfig __restrict__ server_config) __attribute_warn_unused_result__;
+int server_handle_init(sHandle __restrict__ *__restrict__ server_handle,
+		       sConfig __restrict__ server_config) __attribute_warn_unused_result__;
 
 /**
  * @brief Creates all server threads that will be listening to requests from clients. On success, 0 is
@@ -65,7 +65,7 @@ extern int server_handle_init(sHandle __restrict__ *__restrict__ server_handle,
  * @param server_handle
  * @return int
  */
-extern int server_spawn_threads(sHandle server_handle) __attribute_warn_unused_result__;
+int server_spawn_threads(sHandle server_handle) __attribute_warn_unused_result__;
 
 /**
  * @brief
@@ -73,7 +73,7 @@ extern int server_spawn_threads(sHandle server_handle) __attribute_warn_unused_r
  * @param server_handle
  * @return int
  */
-extern int server_wait_threads(sHandle server_handle) __attribute__((deprecated("DO NOT USE!")));
+int server_wait_threads(sHandle server_handle) __attribute__((deprecated("DO NOT USE!")));
 
 /**
  * @brief
@@ -81,6 +81,6 @@ extern int server_wait_threads(sHandle server_handle) __attribute__((deprecated(
  * @param shandle
  * @return int
  */
-extern int server_handle_destroy(sHandle shandle);
+int server_handle_destroy(sHandle shandle);
 
 #endif /* PARALLAX_TCP_SERVER_H */
