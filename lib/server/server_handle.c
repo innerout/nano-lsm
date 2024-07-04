@@ -50,12 +50,12 @@
 
 #define DECIMAL_BASE 10
 
-#define USAGE_STRING                         \
-	"tcp-server: no options specified\n" \
-	"try 'tcp-server --help' for more information\n"
+#define USAGE_STRING                              \
+	"parallax_server: no options specified\n" \
+	"try 'parallax_server --help' for more information\n"
 
 #define HELP_STRING                                                                                \
-	"Usage:\n  tcp-server <-bptf>\nOptions:\n"                                                 \
+	"Usage:\n  parallax_server <-bptf>\nOptions:\n"                                            \
 	" -t, --threads <thread-num>  specify number of server threads.\n"                         \
 	" -b, --bind <if-address>     specify the interface that the server will bind to.\n"       \
 	" -p, --port <port>           specify the port that the server will be listening\n"        \
@@ -64,7 +64,7 @@
 	" -v, --version  display version information and exit\n"
 #define NECESSARY_OPTIONS 6
 
-#define VERSION_STRING "tcp-server 0.1\n"
+#define VERSION_STRING "parallax_server 0.1\n"
 
 #define ERROR_STRING "\033[1m[\033[31m*\033[0;1m]\033[0m"
 
@@ -242,7 +242,7 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 
 	for (int i = 1; i < argc; ++i) {
 		if (argv[i][0] != '-') {
-			fprintf(stderr, ERROR_STRING " tcp-server: uknown option '%s'\n", argv[i]);
+			fprintf(stderr, ERROR_STRING " parallax_server: unknown option '%s'\n", argv[i]);
 			free(opts);
 			exit(EXIT_FAILURE);
 		}
@@ -261,11 +261,12 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 
 			if (errno) {
 				if (errno == EINVAL)
-					fprintf(stderr, ERROR_STRING " tcp-server: invalid number in option '%s'\n",
+					fprintf(stderr,
+						ERROR_STRING " parallax_server: invalid number in option '%s'\n",
 						argv[i - 1U]);
 				else
 					fprintf(stderr,
-						ERROR_STRING " tcp-server: number out-of-range in option '%s'\n",
+						ERROR_STRING " parallax_server: number out-of-range in option '%s'\n",
 						argv[i - 1U]);
 
 				free(opts);
@@ -273,7 +274,7 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 			}
 
 			if (thrnum < 0) {
-				fprintf(stderr, ERROR_STRING " tcp-server: invalid number in option '%s'\n",
+				fprintf(stderr, ERROR_STRING " parallax_server: invalid number in option '%s'\n",
 					argv[i - 1U]);
 				free(opts);
 				exit(EXIT_FAILURE);
@@ -287,11 +288,12 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 
 			if (errno) {
 				if (errno == EINVAL)
-					fprintf(stderr, ERROR_STRING " tcp-server: invalid number in option '%s'\n",
+					fprintf(stderr,
+						ERROR_STRING " parallax_server: invalid number in option '%s'\n",
 						argv[i - 1U]);
 				else
 					fprintf(stderr,
-						ERROR_STRING " tcp-server: number out-of-range in option '%s'\n",
+						ERROR_STRING " parallax_server: number out-of-range in option '%s'\n",
 						argv[i - 1U]);
 
 				free(opts);
@@ -299,12 +301,12 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 			}
 
 			if (port < 0) {
-				fprintf(stderr, ERROR_STRING " tcp-server: invalid number in option '%s'\n",
+				fprintf(stderr, ERROR_STRING " parallax_server: invalid number in option '%s'\n",
 					argv[i - 1U]);
 				free(opts);
 				exit(EXIT_FAILURE);
 			} else if (port > PORT_MAX) {
-				fprintf(stderr, ERROR_STRING " tcp-server: port is too big\n");
+				fprintf(stderr, ERROR_STRING " parallax_server: port is too big\n");
 				free(opts);
 				exit(EXIT_FAILURE);
 			}
@@ -313,7 +315,7 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 			((struct sockaddr_in *)(&opts->inaddr))->sin_port = htons((unsigned short)(port));
 		} else if (!strcmp(argv[i], "-b") || !strcmp(argv[i], "--bind")) {
 			if (!argv[++i]) {
-				fprintf(stderr, ERROR_STRING " tcp-server: no address provided!\n");
+				fprintf(stderr, ERROR_STRING " parallax_server: no address provided!\n");
 				free(opts);
 				exit(EXIT_FAILURE);
 			}
@@ -339,7 +341,7 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 			}
 
 			if (!inet_pton(opts->inaddr.ss_family, argv[i], (char *)(&opts->inaddr) + off)) {
-				fprintf(stderr, ERROR_STRING " tcp-server: invalid address\n");
+				fprintf(stderr, ERROR_STRING " parallax_server: invalid address\n");
 				free(opts);
 				exit(EXIT_FAILURE);
 			}
@@ -348,7 +350,7 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 			opts->paddr = argv[i];
 		} else if (!strcmp(argv[i], "-L0") || !strcmp(argv[i], "--L0_size")) {
 			if (!argv[++i]) {
-				fprintf(stderr, ERROR_STRING " tcp-server: no address provided!\n");
+				fprintf(stderr, ERROR_STRING " parallax_server: no address provided!\n");
 				free(opts);
 				exit(EXIT_FAILURE);
 			}
@@ -358,7 +360,7 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 			opts->paddr = argv[i];
 		} else if (!strcmp(argv[i], "-GF") || !strcmp(argv[i], "--GF")) {
 			if (!argv[++i]) {
-				fprintf(stderr, ERROR_STRING " tcp-server: no address provided!\n");
+				fprintf(stderr, ERROR_STRING " parallax_server: no address provided!\n");
 				free(opts);
 				exit(EXIT_FAILURE);
 			}
@@ -376,7 +378,7 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 			exit(EXIT_SUCCESS);
 		} else if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--file")) {
 			if (!argv[++i]) {
-				fprintf(stderr, ERROR_STRING " tcp-server: no file provided!\n");
+				fprintf(stderr, ERROR_STRING " parallax_server: no file provided!\n");
 				free(opts);
 				exit(EXIT_FAILURE);
 			}
@@ -384,7 +386,7 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 			++opt_sum;
 			opts->dbpath = argv[i];
 		} else {
-			fprintf(stderr, ERROR_STRING " tcp-server: uknown option '%s'\n", argv[i]);
+			fprintf(stderr, ERROR_STRING " parallax_server: uknown option '%s'\n", argv[i]);
 			free(opts);
 			exit(EXIT_FAILURE);
 		}

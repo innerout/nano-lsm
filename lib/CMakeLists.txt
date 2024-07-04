@@ -84,6 +84,11 @@ target_include_directories(${LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
 target_include_directories(${LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/")
 
 list(APPEND SERVER_SOURCE_FILES api/parallax_client_lib.c)
+list(APPEND SERVER_SOURCE_FILES serializer/serializer.c)
+
+# TEMPORARILY APPENDING HERE SO I CAN TEST WITHOUT INVOLVING THE SERVER
+list(APPEND SERVER_SOURCE_FILES serializer/deserializer.c)
+list(APPEND SERVER_SOURCE_FILES classes/par_put.c)
 
 add_library(${LIB_SERVER} ${SERVER_SOURCE_FILES})
 target_link_libraries(${LIB_SERVER} ${DEPENDENCIES})
@@ -119,7 +124,7 @@ install(FILES include/parallax/parallax.h include/parallax/structures.h
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
 
 set_target_properties(${LIB} PROPERTIES OUTPUT_NAME ${LIB})
-set_target_properties(server.${LIB} PROPERTIES OUTPUT_NAME ${LIB})
+set_target_properties(server.${LIB} PROPERTIES OUTPUT_NAME ${LIB}_server)
 
 if(RUN_IWYU STREQUAL "ON")
   find_program(iwyu_path NAMES include-what-you-use iwyu iwyu-tool)

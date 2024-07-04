@@ -20,12 +20,15 @@
 #include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../btree/set_options.h"
+#include "../classes/par_put.h"
 #include "../common/common.h"
 #include "../include/parallax/parallax.h"
 #include "../include/parallax/structures.h"
 #include "../lib/allocator/device_structures.h"
 #include "../lib/scanner/scanner_mode.h"
 #include "../scanner/scanner.h"
+#include "../serializer/deserializer.h"
+#include "../serializer/serializer.h"
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -47,7 +50,6 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 
 par_handle par_open(par_db_options *db_options, const char **error_message)
 {
-	return NULL;
 }
 
 const char *par_close(par_handle handle)
@@ -69,6 +71,17 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 //cppcheck-suppress constParameterPointer
 struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
+	size_t par_message_len;
+	struct par_put_class *par_put_obj = (struct par_put_class *)malloc(sizeof(struct par_put_class));
+
+	par_put_obj->init = par_put_init;
+	par_put_obj->serialize = par_put_serialize;
+	par_put_obj->send = par_put_send;
+
+	par_put_obj->init(par_put_obj, handle, key_value);
+	par_put_obj->serialize(par_put_obj);
+
+	par_put_obj->send(par_put_obj);
 }
 
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
@@ -79,7 +92,6 @@ struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_k
 // cppcheck-suppress constParameterPointer
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
 {
-	return;
 }
 
 void par_get_serialized(par_handle handle, char *key_serialized, struct par_value *value, const char **error_message)
