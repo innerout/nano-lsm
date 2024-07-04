@@ -75,7 +75,6 @@ char *par_serialize_par_key(struct par_key *key, size_t *ser_len)
 
 	buffer_len += sizeof(uint32_t);
 	buffer_len += strlen(key->data) + 1;
-	printf("key buffer len is = %d\n", buffer_len);
 
 	char *ser = (char *)malloc(buffer_len);
 
