@@ -80,7 +80,6 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 
 	par_put_obj->init(par_put_obj, handle, key_value);
 	par_put_obj->serialize(par_put_obj);
-
 	par_put_obj->send(par_put_obj);
 }
 

@@ -17,11 +17,10 @@ void par_put_serialize(struct par_put_class *obj)
 	char *par_key_message;
 	char *par_value_message;
 
-	size_t key_len, value_len, par_handle_len, command_len;
+	size_t key_len, value_len, par_handle_len, command_len = 0;
+
 	par_command_message = par_serialize_command(1, &command_len);
-
 	par_handle_message = par_serialize_handle(obj->handle, &par_handle_len);
-
 	par_key_message = par_serialize_par_key(&obj->kv->k, &key_len);
 	par_value_message = par_serialize_par_value(&obj->kv->v, &value_len);
 

@@ -8,8 +8,8 @@ int main(int argc, char **argv)
 	struct par_key_value *kv = malloc(sizeof(struct par_key_value));
 	uint64_t handle_val = 32;
 
-	kv->k.data = "key";
-	kv->k.size = 4;
+	kv->k.data = "sample_key_data";
+	kv->k.size = 16;
 
 	kv->v.val_buffer = "sample_value_data";
 	kv->v.val_buffer_size = 18;

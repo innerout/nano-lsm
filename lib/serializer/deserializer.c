@@ -32,8 +32,6 @@ void par_des_put(char *par_stream)
 	par_handle handle;
 	struct par_key_value *kv = malloc(sizeof(struct par_key_value));
 
-	char *key_data;
-
 	//Skipping opcode
 	par_stream += sizeof(uint32_t);
 
@@ -45,8 +43,10 @@ void par_des_put(char *par_stream)
 	memcpy(&(kv->k.size), par_stream, sizeof(uint32_t));
 	par_stream += sizeof(uint32_t);
 
-	memcpy(&(kv->k.data), par_stream, kv->k.size);
+	char *key_data = malloc(kv->k.size);
+	memcpy(key_data, par_stream, kv->k.size);
 	par_stream += kv->k.size;
+	kv->k.data = key_data;
 
 	//Deserializing Value field
 	memcpy(&(kv->v.val_size), par_stream, sizeof(uint32_t));
@@ -55,8 +55,11 @@ void par_des_put(char *par_stream)
 	memcpy(&(kv->v.val_buffer_size), par_stream, sizeof(uint32_t));
 	par_stream += sizeof(uint32_t);
 
-	memcpy(&(kv->v.val_buffer), par_stream, kv->v.val_buffer_size);
+	kv->v.val_buffer = malloc(kv->v.val_buffer_size);
+	memcpy(kv->v.val_buffer, par_stream, kv->v.val_buffer_size);
 	par_stream += kv->v.val_buffer_size;
+
+	//Call server's par_put function
 
 	return;
 }
