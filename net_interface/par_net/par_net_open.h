@@ -1,6 +1,7 @@
+#ifndef PAR_NET_OPEN_H
+#define PAR_NET_OPEN_H
 #include "../../lib/include/parallax/parallax.h"
 #include "../../lib/include/parallax/structures.h"
-
 #include <assert.h>
 #include <log.h>
 #include <spin_loop.h>
@@ -10,16 +11,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct __attribute__((packed)) par_net_open_req {
+struct par_net_open_req {
 	uint8_t flag;
 	uint32_t name_size;
 	uint32_t volume_name_size;
 	uint64_t opt_value;
-};
+} __attribute__((packed));
 
-struct __attribute__((packed)) par_net_open_rep {
+struct par_net_open_rep {
 	uint32_t status;
-};
+} __attribute__((packed));
 
 /**
   * @brief calculates total size of par_net_open_req struct and the sizes
@@ -77,3 +78,4 @@ char *par_net_open_serialize(struct par_net_open_req *request, size_t *buffer_le
   *
   */
 struct par_net_open_rep *par_net_open_deserialize(char *buffer, size_t *buffer_len);
+#endif

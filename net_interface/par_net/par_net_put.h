@@ -1,26 +1,26 @@
+#ifndef PAR_NET_PUT_H
+#define PAR_NET_PUT_H
 #include "../../lib/include/parallax/parallax.h"
 #include "../../lib/include/parallax/structures.h"
-
-#include <stdarg.h>
-
 #include <assert.h>
 #include <log.h>
 #include <spin_loop.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
-struct __attribute__((packed)) par_net_put_req {
+struct par_net_put_req {
 	uint64_t region_id;
 	uint32_t key_size;
 	uint32_t value_size;
-};
+} __attribute__((packed));
 
-struct __attribute__((packed)) par_net_put_rep {
+struct par_net_put_rep {
 	uint32_t status;
-};
+} __attribute__((packed));
 
 /**
   * @brief calculates total size of par_net_put_req struct and the sizes
@@ -77,3 +77,4 @@ char *par_net_put_serialize(struct par_net_put_req *request, size_t *buffer_len)
   *
   */
 struct par_net_put_rep *par_net_put_deserialize(char *buffer, size_t *buffer_len);
+#endif
