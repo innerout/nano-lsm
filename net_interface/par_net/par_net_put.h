@@ -18,6 +18,10 @@ struct __attribute__((packed)) par_net_put_req {
 	uint32_t value_size;
 };
 
+struct __attribute__((packed)) par_net_put_rep {
+	uint32_t status;
+};
+
 /**
   * @brief calculates total size of par_net_put_req struct and the sizes
   * of the key and value.
@@ -28,7 +32,7 @@ struct __attribute__((packed)) par_net_put_req {
   * @return Total size of struct, key and value
   *
   */
-size_t par_net_req_calc_size(uint32_t key_size, uint32_t value_size);
+size_t par_net_put_calc_size(uint32_t key_size, uint32_t value_size);
 
 /**
   *
@@ -60,7 +64,7 @@ struct par_net_put_req *par_net_put_req_create(uint64_t region_id, uint32_t key_
   * @return buffer of serialized data on success and NULL on failure
   *
   */
-char *par_put_req_serialize(struct par_net_put_req *request, size_t *buffer_len);
+char *par_net_put_serialize(struct par_net_put_req *request, size_t *buffer_len);
 
 /**
   *
@@ -72,4 +76,4 @@ char *par_put_req_serialize(struct par_net_put_req *request, size_t *buffer_len)
   * @return An object of the par_net_put_req struct on success and NULL on failure
   *
   */
-struct par_net_put_req *par_put_req_deserialize(char *buffer, size_t *buffer_len);
+struct par_net_put_rep *par_net_put_deserialize(char *buffer, size_t *buffer_len);

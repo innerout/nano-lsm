@@ -69,16 +69,6 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 //cppcheck-suppress constParameterPointer
 struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
-	size_t par_message_len;
-	size_t buffer_len = par_net_req_calc_size(key_value->k.size, key_value->v.val_size);
-	char buffer[buffer_len];
-
-	struct par_net_put_req *parnet_put_serialize =
-		par_net_put_req_create(*(uint64_t *)handle, key_value->k.size, key_value->k.data, key_value->v.val_size,
-				       key_value->v.val_buffer, buffer, &buffer_len);
-
-	char *buf = par_put_req_serialize(parnet_put_serialize, &buffer_len);
-	struct par_net_put_req *parnet_put_deserialize = par_put_req_deserialize(buf, &buffer_len);
 }
 
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
