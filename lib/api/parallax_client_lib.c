@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "../../net_interface/par_net/par_net_put.h"
 #include "../allocator/kv_format.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/persistent_operations.h"
@@ -26,6 +25,7 @@
 #include "../include/parallax/structures.h"
 #include "../lib/allocator/device_structures.h"
 #include "../lib/scanner/scanner_mode.h"
+#include "../net_interface/par_net/par_net.h"
 #include "../scanner/scanner.h"
 
 #include <arpa/inet.h>
@@ -69,6 +69,25 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 //cppcheck-suppress constParameterPointer
 struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
+	struct par_put_metadata sample_return_value;
+
+	uint64_t region_id = 12;
+	size_t buffer_len = par_net_put_calc_size(key_value->k.size, key_value->v.val_size);
+	char buffer[buffer_len];
+
+	struct par_net_put_req *request = par_net_put_req_create(region_id, key_value->k.size, key_value->k.data,
+								 key_value->v.val_size, key_value->v.val_buffer, buffer,
+								 &buffer_len);
+	char *serialized_buffer = par_net_put_serialize(request, &buffer_len);
+
+	//Send to server
+
+	uint8_t opcode = par_find_opcode(serialized_buffer);
+	struct par_net_rep reply = par_net_deserialize[opcode](serialized_buffer, &buffer_len);
+	if (reply.status == REP_FAIL) {
+		*error_message = "Invalid reply from server";
+		return sample_return_value;
+	}
 }
 
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
