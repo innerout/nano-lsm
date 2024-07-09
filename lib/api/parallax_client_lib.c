@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "../../net_interface/par_net/par_net_put.h"
 #include "../allocator/kv_format.h"
 #include "../allocator/log_structures.h"
 #include "../allocator/persistent_operations.h"
@@ -20,15 +21,12 @@
 #include "../btree/key_splice.h"
 #include "../btree/kv_pairs.h"
 #include "../btree/set_options.h"
-#include "../classes/par_put.h"
 #include "../common/common.h"
 #include "../include/parallax/parallax.h"
 #include "../include/parallax/structures.h"
 #include "../lib/allocator/device_structures.h"
 #include "../lib/scanner/scanner_mode.h"
 #include "../scanner/scanner.h"
-#include "../serializer/deserializer.h"
-#include "../serializer/serializer.h"
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -72,15 +70,15 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
 	size_t par_message_len;
-	struct par_put_class *par_put_obj = (struct par_put_class *)malloc(sizeof(struct par_put_class));
+	size_t buffer_len = par_net_req_calc_size(key_value->k.size, key_value->v.val_size);
+	char buffer[buffer_len];
 
-	par_put_obj->init = par_put_init;
-	par_put_obj->serialize = par_put_serialize;
-	par_put_obj->send = par_put_send;
+	struct par_net_put_req *parnet_put_serialize =
+		par_net_put_req_create(*(uint64_t *)handle, key_value->k.size, key_value->k.data, key_value->v.val_size,
+				       key_value->v.val_buffer, buffer, &buffer_len);
 
-	par_put_obj->init(par_put_obj, handle, key_value);
-	par_put_obj->serialize(par_put_obj);
-	par_put_obj->send(par_put_obj);
+	char *buf = par_put_req_serialize(parnet_put_serialize, &buffer_len);
+	struct par_net_put_req *parnet_put_deserialize = par_put_req_deserialize(buf, &buffer_len);
 }
 
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,

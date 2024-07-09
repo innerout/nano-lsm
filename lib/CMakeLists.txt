@@ -15,7 +15,6 @@
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 set(LIB "${PROJECT_NAME}")
-set(LIB_SERVER "${PROJECT_NAME}_server")
 
 option(
   RUN_IWYU
@@ -29,6 +28,7 @@ set(LIB_C_SOURCE_FILES
     allocator/region_log.c
     allocator/persistent_operations.c
     allocator/djb2.c
+    api/parallax.c
     btree/btree.c
     btree/index_node.c
     btree/compaction/compaction_daemon.c
@@ -53,9 +53,7 @@ set(LIB_C_SOURCE_FILES
     scanner/scanner.c
     scanner/L0_scanner.c
     scanner/stack.c
-    parallax_callbacks/parallax_callbacks.c
-    server/server_handle.c
-    server/arg_parser.c)
+    parallax_callbacks/parallax_callbacks.c)
 
 list(APPEND LIB_C_SOURCE_FILES
      "$CACHE{parallax_SOURCE_DIR}/utilities/spin_loop.c")
@@ -71,9 +69,6 @@ else()
     LIB_C_SOURCE_FILES PROPERTIES COMPILE_FLAGS "${CMAKE_C_FLAGS_RELEASE}")
 endif()
 
-set(SERVER_SOURCE_FILES ${LIB_C_SOURCE_FILES})
-list(APPEND LIB_C_SOURCE_FILES api/parallax.c)
-
 add_library(${LIB} ${LIB_C_SOURCE_FILES})
 target_link_libraries(${LIB} ${DEPENDENCIES})
 set_target_properties(
@@ -83,24 +78,6 @@ set_target_properties(
 target_include_directories(${LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
 target_include_directories(${LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/")
 
-list(APPEND SERVER_SOURCE_FILES api/parallax_client_lib.c)
-list(APPEND SERVER_SOURCE_FILES serializer/serializer.c)
-
-# TEMPORARILY APPENDING HERE SO I CAN TEST WITHOUT INVOLVING THE SERVER
-list(APPEND SERVER_SOURCE_FILES serializer/deserializer.c)
-list(APPEND SERVER_SOURCE_FILES classes/par_put.c)
-
-add_library(${LIB_SERVER} ${SERVER_SOURCE_FILES})
-target_link_libraries(${LIB_SERVER} ${DEPENDENCIES})
-set_target_properties(
-  ${LIB_SERVER}
-  PROPERTIES PUBLIC_HEADER
-             "${CMAKE_CURRENT_SOURCE_DIR}/include/parallax/parallax.h")
-
-target_include_directories(${LIB_SERVER}
-                           PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include/")
-target_include_directories(${LIB_SERVER} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/")
-
 set_source_files_properties(allocator/spin_loop.c PROPERTIES COMPILE_FLAGS
                                                              "-O0")
 # kv_format utility
@@ -108,8 +85,8 @@ add_executable(kv_format.${LIB} allocator/kv_format.c common/common.c)
 target_compile_definitions(kv_format.${LIB} PUBLIC -DSTANDALONE_FORMAT)
 target_link_libraries(kv_format.${LIB} PRIVATE ${DEPENDENCIES})
 
-add_executable(server.${LIB} server/parallax_server.c server/server_handle.c
-                             server/arg_parser.c)
+add_executable(server.${LIB} ../net_interface/server/parallax_server.c
+                             ../net_interface/server/server_handle.c)
 target_compile_definitions(server.${LIB} PUBLIC -DSTANDALONE_FORMAT)
 target_link_libraries(server.${LIB} PRIVATE ${LIB} ${DEPENDENCIES})
 

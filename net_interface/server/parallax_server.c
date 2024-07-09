@@ -1,5 +1,5 @@
-#include "../include/parallax/parallax.h"
-#include "../include/parallax/structures.h"
+#include "../../lib/include/parallax/parallax.h"
+#include "../../lib/include/parallax/structures.h"
 #include <stdio.h>
 
 #include "server_handle.h"

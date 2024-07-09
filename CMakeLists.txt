@@ -254,6 +254,7 @@ string(APPEND CMAKE_CXX_FLAGS_RELEASE " -std=gnu++11 -Wall")
 string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--no-as-needed")
 
 add_subdirectory(lib)
+add_subdirectory(net_interface)
 add_subdirectory(YCSB-CXX)
 add_subdirectory(utilities)
 add_subdirectory(tests)
