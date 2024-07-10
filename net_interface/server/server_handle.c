@@ -11,6 +11,7 @@
 
 #define _GNU_SOURCE
 #include "server_handle.h"
+#include "../par_net/par_net.h"
 #include "allocator/djb2.h"
 #include "btree/btree.h"
 #include "btree/gc.h"
@@ -876,71 +877,29 @@ static par_handle __server_handle_get_db(sHandle restrict server_handle, uint32_
 
 static int __par_handle_req(struct worker *restrict this, int client_sock, struct tcp_req *restrict req)
 {
-	par_handle par_db = __server_handle_get_db(this->shandle, req->kv.key.size, req->kv.key.data);
-	__u32 tmp = 0;
+	char buffer[1024];
+	struct iovec iov[1];
+	struct msghdr msg;
+	ssize_t bytes_received;
 
-	switch (req->type) {
-	case REQ_GET:
+	iov[0].iov_base = buffer;
+	iov[0].iov_len = sizeof(buffer);
 
-		/** [ 1B type | 4B key-size | key ] **/
+	memset(&msg, 0, sizeof(msg));
+	msg.msg_iov = iov;
+	msg.msg_iovlen = 1;
 
-		par_get_serialized(par_db, req->kv.key.data - 4UL, &this->pval,
-				   &par_error_message_tl); // '-5UL' temp solution
-
-		if (par_error_message_tl) {
-			//Insert Log
-
-			tmp = strlen(par_error_message_tl) + 1U;
-			*((__u8 *)(this->buf.mem)) = TT_REQ_FAIL;
-			*((__u32 *)(this->buf.mem + 1UL)) = htobe32(tmp);
-
-			memcpy(this->buf.mem + TT_REPHDR_SIZE, par_error_message_tl, tmp);
-		} else {
-			*((__u8 *)(this->buf.mem)) = TT_REQ_SUCC;
-			*((__u32 *)(this->buf.mem + 1UL)) = htobe32(this->pval.val_size);
-
-			tmp = this->pval.val_size;
-			// memcpy(this->buf.mem + TT_REPHDR_SIZE, this->pval.val_buffer, tmp);
-		}
-
-		return send(client_sock, this->buf.mem, TT_REPHDR_SIZE + tmp, 0);
-
-	case REQ_PUT:
-
-		/** [ 1B type | 4B key-size | 4B value-size | key | value ] **/
-		;
-		char *serialized_buf = req->kv.key.data - 8UL;
-		uint32_t key_size = *(uint32_t *)&serialized_buf[0];
-		uint32_t value_size = *(uint32_t *)&serialized_buf[4];
-		struct kv_splice_base splice_base = { .kv_cat = calculate_KV_category(key_size, value_size, insertOp),
-						      .kv_type = KV_FORMAT,
-						      .kv_splice = (struct kv_splice *)serialized_buf };
-		par_put_serialized(par_db, (char *)&splice_base, &par_error_message_tl, true,
-				   false); // '-8UL' temp solution
-
-		if (par_error_message_tl) {
-			//Insert Log
-
-			tmp = strlen(par_error_message_tl);
-			*((__u8 *)(this->buf.mem)) = TT_REQ_FAIL;
-			*((__u32 *)(this->buf.mem + 1UL)) = htobe32(tmp);
-
-			memcpy(this->buf.mem + TT_REPHDR_SIZE, par_error_message_tl, tmp);
-		} else
-			*((__u8 *)(this->buf.mem)) = TT_REQ_SUCC;
-
-		/* PUT-req does not return a value */
-
-		*((__u32 *)(this->buf.mem + 1UL)) = 0U;
-
-		return send(client_sock, this->buf.mem, TT_REPHDR_SIZE, 0);
-
-	default:
-
-		// printf("req->type = %d\n", req->type);
-		errno = ENOTSUP;
-		return -(EXIT_FAILURE);
+	bytes_received = recvmsg(client_sock, &msg, 0);
+	if (bytes_received < 0) {
+		log_error("recvmsg failed");
+		return EXIT_FAILURE;
 	}
+
+	uint32_t opcode = par_find_opcode(msg.msg_iov->iov_base);
+	struct par_net_rep reply = par_net_deserialize[opcode](msg.msg_iov->iov_base, &msg.msg_iov->iov_len);
+
+	if (reply.status == 1)
+		return EXIT_FAILURE;
 
 	return EXIT_SUCCESS;
 }

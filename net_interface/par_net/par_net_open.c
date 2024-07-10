@@ -1,8 +1,13 @@
 #include "par_net.h"
 
+size_t get_size(const char *buffer)
+{
+	return strlen(buffer) + 1;
+}
+
 size_t par_net_open_calc_size(uint32_t name_size, uint32_t volume_name_size)
 {
-	return sizeof(uint8_t) + sizeof(struct par_net_open_req) + name_size + volume_name_size;
+	return sizeof(uint32_t) + sizeof(struct par_net_open_req) + name_size + volume_name_size;
 }
 
 struct par_net_open_req *par_net_open_req_create(uint8_t flag, uint32_t name_size, const char *name,
@@ -12,7 +17,7 @@ struct par_net_open_req *par_net_open_req_create(uint8_t flag, uint32_t name_siz
 	if (par_net_open_calc_size(name_size, volume_name_size) > *buffer_len)
 		return NULL;
 
-	uint8_t opcode = OPCODE_OPEN;
+	uint32_t opcode = OPCODE_OPEN;
 	buffer[0] = opcode;
 
 	struct par_net_open_req *request = (struct par_net_open_req *)buffer;
@@ -21,8 +26,8 @@ struct par_net_open_req *par_net_open_req_create(uint8_t flag, uint32_t name_siz
 	request->volume_name_size = volume_name_size;
 	request->opt_value = opt_value;
 
-	memcpy(buffer + sizeof(uint8_t) + sizeof(struct par_net_open_req), name, name_size);
-	memcpy(buffer + sizeof(uint8_t) + sizeof(struct par_net_open_req) + name_size, volume_name, volume_name_size);
+	memcpy(buffer + sizeof(uint32_t) + sizeof(struct par_net_open_req), name, name_size);
+	memcpy(buffer + sizeof(uint32_t) + sizeof(struct par_net_open_req) + name_size, volume_name, volume_name_size);
 
 	return request;
 }
@@ -37,14 +42,14 @@ char *par_net_open_serialize(struct par_net_open_req *request, size_t *buffer_le
 		return NULL;
 	}
 
-	uint8_t opcode = OPCODE_OPEN;
+	uint32_t opcode = OPCODE_OPEN;
 	buffer[0] = opcode;
-	memcpy(buffer + sizeof(uint8_t), request, sizeof(struct par_net_open_req));
+	memcpy(buffer + sizeof(uint32_t), request, sizeof(struct par_net_open_req));
 
-	memcpy(buffer + sizeof(uint8_t) + sizeof(struct par_net_open_req),
+	memcpy(buffer + sizeof(uint32_t) + sizeof(struct par_net_open_req),
 	       (char *)request + sizeof(struct par_net_open_req), request->name_size);
 
-	memcpy(buffer + sizeof(uint8_t) + sizeof(struct par_net_open_req) + request->name_size,
+	memcpy(buffer + sizeof(uint32_t) + sizeof(struct par_net_open_req) + request->name_size,
 	       (char *)request + sizeof(struct par_net_open_req) + request->name_size, request->volume_name_size);
 
 	return buffer;
@@ -53,12 +58,12 @@ char *par_net_open_serialize(struct par_net_open_req *request, size_t *buffer_le
 struct par_net_rep par_net_open_deserialize(char *buffer, size_t *buffer_len)
 {
 	struct par_net_rep open_rep;
-	if (*buffer_len < sizeof(uint8_t) + sizeof(struct par_net_open_req)) {
+	if (*buffer_len < sizeof(uint32_t) + sizeof(struct par_net_open_req)) {
 		open_rep.status = REP_FAIL;
 		return open_rep;
 	}
 
-	buffer += sizeof(uint8_t);
+	buffer += sizeof(uint32_t);
 
 	struct par_net_open_req *request = (struct par_net_open_req *)malloc(sizeof(struct par_net_open_req));
 	if (!request) {
@@ -83,13 +88,24 @@ struct par_net_rep par_net_open_deserialize(char *buffer, size_t *buffer_len)
 		return open_rep;
 	}
 
-	memcpy(name, buffer + sizeof(uint8_t) + sizeof(struct par_net_open_req), request->name_size);
-	memcpy(volume_name, buffer + sizeof(uint8_t) + sizeof(struct par_net_open_req) + request->name_size,
+	memcpy(name, buffer + sizeof(uint32_t) + sizeof(struct par_net_open_req), request->name_size);
+	memcpy(volume_name, buffer + sizeof(uint32_t) + sizeof(struct par_net_open_req) + request->name_size,
 	       request->volume_name_size);
 
-	//Call par_open using parallax public api
+	par_db_options *db_options = malloc(sizeof(par_db_options));
+
+	db_options->create_flag = request->flag;
+	db_options->db_name = name;
+	db_options->options->value = request->opt_value;
+	db_options->volume_name = volume_name;
+
+	if (!par_open(db_options, NULL)) {
+		//Call destroy here
+		open_rep.status = REP_FAIL;
+	}
 
 	open_rep.status = REP_SUCCESS;
 
+	//Call destroy here
 	return open_rep;
 }

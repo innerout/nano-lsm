@@ -48,6 +48,18 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 
 par_handle par_open(par_db_options *db_options, const char **error_message)
 {
+	size_t name_len = get_size(db_options->db_name);
+	size_t vol_len = get_size(db_options->volume_name);
+	size_t buffer_len = par_net_open_calc_size(name_len, vol_len);
+	char buffer[buffer_len];
+
+	struct par_net_open_req *request =
+		par_net_open_req_create(db_options->create_flag, name_len, db_options->db_name, vol_len,
+					db_options->volume_name, db_options->options->value, buffer, &buffer_len);
+
+	char *serialized_buffer = par_net_open_serialize(request, &buffer_len);
+
+	par_net_send(serialized_buffer, &buffer_len);
 }
 
 const char *par_close(par_handle handle)
@@ -78,16 +90,10 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 	struct par_net_put_req *request = par_net_put_req_create(region_id, key_value->k.size, key_value->k.data,
 								 key_value->v.val_size, key_value->v.val_buffer, buffer,
 								 &buffer_len);
+
 	char *serialized_buffer = par_net_put_serialize(request, &buffer_len);
 
-	//Send to server
-
-	uint8_t opcode = par_find_opcode(serialized_buffer);
-	struct par_net_rep reply = par_net_deserialize[opcode](serialized_buffer, &buffer_len);
-	if (reply.status == REP_FAIL) {
-		*error_message = "Invalid reply from server";
-		return sample_return_value;
-	}
+	par_net_send(serialized_buffer, &buffer_len);
 }
 
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,

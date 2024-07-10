@@ -41,7 +41,7 @@ set(SERVER_SOURCE_FILES
     par_net/par_net_put.c
     par_net/par_net_open.c
     par_net/par_net_delete.c
-    par_net/par_net_deserialize.c)
+    par_net/par_net_send.c)
 
 list(APPEND SERVER_SOURCE_FILES
      "$CACHE{parallax_SOURCE_DIR}/utilities/spin_loop.c")

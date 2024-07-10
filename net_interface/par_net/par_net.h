@@ -13,9 +13,17 @@
 #define REP_FAIL 1
 #define REP_SUCCESS 0
 
-#define MAX_OPCODE 3
+#define MAX_OPCODE 4
 
-enum par_net_op { OPCODE_OPEN, OPCODE_PUT, OPCODE_DEL };
+#if __BIG_ENDIAN__
+#define htonl_64(x) (x)
+#define ntohl_64(x) (x)
+#else
+#define htonl_64(x) (((uint64_t)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
+#define ntohl_64(x) (((uint64_t)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
+#endif
+
+enum par_net_op { OPCODE_OPEN = 1, OPCODE_PUT, OPCODE_DEL };
 
 struct par_net_put_req {
 	uint64_t region_id;
@@ -24,10 +32,10 @@ struct par_net_put_req {
 } __attribute__((packed));
 
 struct par_net_open_req {
-	uint8_t flag;
+	uint64_t opt_value;
 	uint32_t name_size;
 	uint32_t volume_name_size;
-	uint64_t opt_value;
+	uint8_t flag;
 } __attribute__((packed));
 
 struct par_net_del_req {
@@ -52,7 +60,7 @@ extern deserializer par_net_deserialize[4];
  *  @return the uint8_t opcode
  *
  */
-uint8_t par_find_opcode(char *buffer);
+uint32_t par_find_opcode(char *buffer);
 
 /**
   * @brief calculates total size of par_net_put_req struct and the sizes
@@ -109,6 +117,15 @@ char *par_net_put_serialize(struct par_net_put_req *request, size_t *buffer_len)
   *
   */
 struct par_net_rep par_net_put_deserialize(char *buffer, size_t *buffer_len);
+
+/**
+ * @brief calcutes the size of a string
+ *
+ * @param buffer
+ *
+ * @return the string's size
+*/
+size_t get_size(const char *buffer);
 
 /**
   * @brief calculates total size of par_net_open_req struct and the sizes
@@ -227,3 +244,13 @@ struct par_net_rep par_net_del_deserialize(char *buffer, size_t *buffer_len);
  *  @return a failed server reply
  */
 struct par_net_rep par_net_error(char *buffer, size_t *buffer_len);
+
+/**
+ *  @brief Sends buffer to the server
+ *
+ *  @param buffer
+ *  @param buffer_len
+ *
+ *  @return 0 on success and 1 on failure
+ */
+int par_net_send(char *buffer, size_t *buffer_len);

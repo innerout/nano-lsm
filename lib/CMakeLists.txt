@@ -85,8 +85,14 @@ add_executable(kv_format.${LIB} allocator/kv_format.c common/common.c)
 target_compile_definitions(kv_format.${LIB} PUBLIC -DSTANDALONE_FORMAT)
 target_link_libraries(kv_format.${LIB} PRIVATE ${DEPENDENCIES})
 
-add_executable(server.${LIB} ../net_interface/server/parallax_server.c
-                             ../net_interface/server/server_handle.c)
+add_executable(
+  server.${LIB}
+  ../net_interface/server/parallax_server.c
+  ../net_interface/server/server_handle.c
+  ../net_interface/par_net/par_net_deserialize.c
+  ../net_interface/par_net/par_net_open.c
+  ../net_interface/par_net/par_net_put.c
+  ../net_interface/par_net/par_net_delete.c)
 target_compile_definitions(server.${LIB} PUBLIC -DSTANDALONE_FORMAT)
 target_link_libraries(server.${LIB} PRIVATE ${LIB} ${DEPENDENCIES})
 
