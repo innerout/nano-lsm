@@ -26,10 +26,14 @@
 #include "../lib/allocator/device_structures.h"
 #include "../lib/scanner/scanner_mode.h"
 #include "../net_interface/par_net/par_net.h"
+#include "../net_interface/par_net/par_net_open.h"
+#include "../net_interface/par_net/par_net_put.h"
 #include "../scanner/scanner.h"
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <assert.h>
 #include <log.h>
@@ -41,6 +45,49 @@
 #include <string.h>
 #define PAR_MAX_PREALLOCATED_SIZE 256
 
+static int par_net_send(char *buffer, size_t *buffer_len)
+{
+	int sockfd;
+	struct sockaddr_in server_addr;
+
+	struct msghdr msg = { 0 };
+	struct iovec iov[1];
+	ssize_t bytes_sent;
+
+	iov[0].iov_base = buffer;
+	iov[0].iov_len = *buffer_len;
+
+	msg.msg_iov = iov;
+	msg.msg_iovlen = 1;
+
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_port = htons(8080);
+	server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+		perror("TCP_CLIENT_SOCKET");
+		log_error("Could not create socket");
+		return 1;
+	}
+
+	if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+		perror("TCP_CLIENT_CONNECT");
+		log_error("Could not connect to server");
+		return 1;
+	}
+
+	bytes_sent = sendmsg(sockfd, &msg, 0);
+	if (bytes_sent < 0) {
+		perror("TCP_CLIENT_SENDMSG");
+		log_fatal("Sendmsg failed");
+		_exit(EXIT_FAILURE);
+	}
+
+	close(sockfd);
+
+	return 0;
+}
+
 char *par_format(char *device_name, uint32_t max_regions_num)
 {
 	return NULL;
@@ -48,18 +95,24 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 
 par_handle par_open(par_db_options *db_options, const char **error_message)
 {
-	size_t name_len = get_size(db_options->db_name);
-	size_t vol_len = get_size(db_options->volume_name);
-	size_t buffer_len = par_net_open_calc_size(name_len, vol_len);
-	char buffer[buffer_len];
+	uint32_t name_size = get_size(db_options->db_name);
+	uint32_t volume_name_size = get_size(db_options->volume_name);
+	size_t buffer_len = par_net_open_calc_size(name_size, volume_name_size);
+	char *buffer = malloc(buffer_len);
+
+	uint32_t opcode = OPCODE_OPEN;
+	buffer[0] = opcode;
 
 	struct par_net_open_req *request =
-		par_net_open_req_create(db_options->create_flag, name_len, db_options->db_name, vol_len,
+		par_net_open_req_create(db_options->create_flag, name_size, db_options->db_name, volume_name_size,
 					db_options->volume_name, db_options->options->value, buffer, &buffer_len);
 
 	char *serialized_buffer = par_net_open_serialize(request, &buffer_len);
 
-	par_net_send(serialized_buffer, &buffer_len);
+	if (par_net_send(serialized_buffer, &buffer_len) == 1) {
+		*error_message = "Could not send to server";
+		return NULL;
+	}
 }
 
 const char *par_close(par_handle handle)
@@ -84,8 +137,12 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 	struct par_put_metadata sample_return_value;
 
 	uint64_t region_id = 12;
+
 	size_t buffer_len = par_net_put_calc_size(key_value->k.size, key_value->v.val_size);
-	char buffer[buffer_len];
+	char *buffer = malloc(buffer_len);
+
+	uint32_t opcode = OPCODE_PUT;
+	buffer[0] = opcode;
 
 	struct par_net_put_req *request = par_net_put_req_create(region_id, key_value->k.size, key_value->k.data,
 								 key_value->v.val_size, key_value->v.val_buffer, buffer,
@@ -93,7 +150,12 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 
 	char *serialized_buffer = par_net_put_serialize(request, &buffer_len);
 
-	par_net_send(serialized_buffer, &buffer_len);
+	if (par_net_send(serialized_buffer, &buffer_len) == 1) {
+		*error_message = "Could not send to server";
+		return sample_return_value;
+	}
+
+	return sample_return_value;
 }
 
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,

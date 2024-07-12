@@ -473,13 +473,13 @@ int server_handle_init(sHandle restrict *restrict server_handle, sConfig restric
 
 	/** initialize parallax **/
 
-	const char *error_message = par_format((char *)(sconf->dbpath), MAX_REGIONS);
+	/* const char *error_message = par_format((char *)(sconf->dbpath), MAX_REGIONS);
 
 	if (error_message) {
-		//Insert Log
 		return -(EXIT_FAILURE);
 	}
-	disable_gc();
+	*/
+	/*disable_gc();
 	par_db_options db_options = { .volume_name = (char *)(sconf->dbpath), // fuck clang_format!
 				      .create_flag = PAR_CREATE_DB,
 				      .db_name = "tcp_server_par.db",
@@ -500,7 +500,7 @@ int server_handle_init(sHandle restrict *restrict server_handle, sConfig restric
 	if (error_message) {
 		//Insert Log
 		return -(EXIT_FAILURE);
-	}
+	} */
 
 	signal(SIGINT, server_sig_handler_SIGINT);
 	g_sh = shandle;
@@ -821,27 +821,32 @@ static void *__handle_events(void *arg)
 
 		/** request **/
 
-		ret = __req_recv(this, client_sock, &req);
+		//ret = __req_recv(this, client_sock, &req);
 
-		if (unlikely(ret == TT_ERR_CONN_DROP)) {
+		/*if (unlikely(ret == TT_ERR_CONN_DROP)) {
 			//Insert Log
 			goto client_error;
-		}
+		}*/
 
-		if (unlikely(ret == TT_ERR_GENERIC)) {
+		/*if (unlikely(ret == TT_ERR_GENERIC)) {
 			//Insert Log
 			goto client_error;
-		}
+		}*/
 
-		if (req.type == REQ_INIT_CONN)
+		/*if (req.type == REQ_INIT_CONN)
 			continue;
 
 		if (unlikely(__par_handle_req(this, client_sock, &req) < 0L)) {
 			//Insert Log
 			goto client_error;
 		}
-
+		*/
 		/* re-enable getting INPUT-events from the coresponding client */
+
+		if (unlikely(__par_handle_req(this, client_sock, &req) < 0L)) {
+			//Insert Log
+			goto client_error;
+		}
 
 		rearm_event.data.fd = client_sock;
 		epoll_ctl(this->epfd, EPOLL_CTL_MOD, client_sock, &rearm_event);
@@ -875,6 +880,10 @@ static par_handle __server_handle_get_db(sHandle restrict server_handle, uint32_
 	return par_db;
 }
 
+struct par_net_rep {
+	uint32_t status;
+} __attribute__((packed));
+
 static int __par_handle_req(struct worker *restrict this, int client_sock, struct tcp_req *restrict req)
 {
 	char buffer[1024];
@@ -898,8 +907,10 @@ static int __par_handle_req(struct worker *restrict this, int client_sock, struc
 	uint32_t opcode = par_find_opcode(msg.msg_iov->iov_base);
 	struct par_net_rep reply = par_net_deserialize[opcode](msg.msg_iov->iov_base, &msg.msg_iov->iov_len);
 
-	if (reply.status == 1)
+	if (reply.status == 1) {
+		perror("TCP_SERVER_REPLY");
 		return EXIT_FAILURE;
+	}
 
 	return EXIT_SUCCESS;
 }

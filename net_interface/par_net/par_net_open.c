@@ -1,6 +1,17 @@
-#include "par_net.h"
+#include "par_net_open.h"
 
-size_t get_size(const char *buffer)
+struct par_net_open_req {
+	uint64_t opt_value;
+	uint32_t name_size;
+	uint32_t volume_name_size;
+	uint8_t flag;
+} __attribute__((packed));
+
+struct par_net_rep {
+	uint32_t status;
+} __attribute__((packed));
+
+uint32_t get_size(const char *buffer)
 {
 	return strlen(buffer) + 1;
 }
@@ -17,10 +28,7 @@ struct par_net_open_req *par_net_open_req_create(uint8_t flag, uint32_t name_siz
 	if (par_net_open_calc_size(name_size, volume_name_size) > *buffer_len)
 		return NULL;
 
-	uint32_t opcode = OPCODE_OPEN;
-	buffer[0] = opcode;
-
-	struct par_net_open_req *request = (struct par_net_open_req *)buffer;
+	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
 	request->flag = flag;
 	request->name_size = name_size;
 	request->volume_name_size = volume_name_size;
@@ -34,78 +42,39 @@ struct par_net_open_req *par_net_open_req_create(uint8_t flag, uint32_t name_siz
 
 char *par_net_open_serialize(struct par_net_open_req *request, size_t *buffer_len)
 {
-	*buffer_len = par_net_open_calc_size(request->name_size, request->volume_name_size);
-
-	char *buffer = malloc(*buffer_len);
-	if (!buffer) {
-		*buffer_len = 0;
-		return NULL;
-	}
-
-	uint32_t opcode = OPCODE_OPEN;
-	buffer[0] = opcode;
-	memcpy(buffer + sizeof(uint32_t), request, sizeof(struct par_net_open_req));
-
-	memcpy(buffer + sizeof(uint32_t) + sizeof(struct par_net_open_req),
-	       (char *)request + sizeof(struct par_net_open_req), request->name_size);
-
-	memcpy(buffer + sizeof(uint32_t) + sizeof(struct par_net_open_req) + request->name_size,
-	       (char *)request + sizeof(struct par_net_open_req) + request->name_size, request->volume_name_size);
-
+	char *buffer = (char *)request - sizeof(uint32_t);
 	return buffer;
 }
 
 struct par_net_rep par_net_open_deserialize(char *buffer, size_t *buffer_len)
 {
-	struct par_net_rep open_rep;
-	if (*buffer_len < sizeof(uint32_t) + sizeof(struct par_net_open_req)) {
-		open_rep.status = REP_FAIL;
-		return open_rep;
+	struct par_net_rep open_reply;
+	if (*buffer_len < sizeof(struct par_net_open_req)) {
+		open_reply.status = REP_FAIL;
+		return open_reply;
 	}
 
-	buffer += sizeof(uint32_t);
+	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
 
-	struct par_net_open_req *request = (struct par_net_open_req *)malloc(sizeof(struct par_net_open_req));
-	if (!request) {
-		open_rep.status = REP_FAIL;
-		return open_rep;
-	}
+	char *db_name = (char *)malloc(request->name_size);
+	char *volume_name = (char *)malloc(request->volume_name_size);
 
-	memcpy(request, buffer, sizeof(struct par_net_open_req));
-
-	size_t actual_size = par_net_open_calc_size(request->name_size, request->volume_name_size);
-	if (*buffer_len < actual_size) {
-		//call destroy here
-		open_rep.status = REP_FAIL;
-		return open_rep;
-	}
-
-	char *name = malloc(request->name_size);
-	char *volume_name = malloc(request->volume_name_size);
-	if (!name || !volume_name) {
-		//call destroy here
-		open_rep.status = REP_FAIL;
-		return open_rep;
-	}
-
-	memcpy(name, buffer + sizeof(uint32_t) + sizeof(struct par_net_open_req), request->name_size);
+	memcpy(db_name, buffer + sizeof(uint32_t) + sizeof(struct par_net_open_req), request->name_size);
 	memcpy(volume_name, buffer + sizeof(uint32_t) + sizeof(struct par_net_open_req) + request->name_size,
 	       request->volume_name_size);
 
 	par_db_options *db_options = malloc(sizeof(par_db_options));
+	db_options->options = malloc(sizeof(struct par_options_desc));
 
 	db_options->create_flag = request->flag;
-	db_options->db_name = name;
+	db_options->db_name = db_name;
 	db_options->options->value = request->opt_value;
 	db_options->volume_name = volume_name;
 
-	if (!par_open(db_options, NULL)) {
-		//Call destroy here
-		open_rep.status = REP_FAIL;
-	}
-
-	open_rep.status = REP_SUCCESS;
+	par_open(db_options, NULL);
 
 	//Call destroy here
-	return open_rep;
+
+	open_reply.status = REP_SUCCESS;
+	return open_reply;
 }
