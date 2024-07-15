@@ -31,8 +31,10 @@
 #include "../scanner/scanner.h"
 
 #include <arpa/inet.h>
+#include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
 #include <assert.h>
@@ -73,13 +75,14 @@ static int par_net_send(char *buffer, size_t *buffer_len)
 	if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
 		perror("TCP_CLIENT_CONNECT");
 		log_error("Could not connect to server");
-		return 1;
+		_exit(EXIT_FAILURE);
 	}
 
 	bytes_sent = sendmsg(sockfd, &msg, 0);
 	if (bytes_sent < 0) {
 		perror("TCP_CLIENT_SENDMSG");
 		log_fatal("Sendmsg failed");
+		close(sockfd);
 		_exit(EXIT_FAILURE);
 	}
 
@@ -98,6 +101,7 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	uint32_t name_size = get_size(db_options->db_name);
 	uint32_t volume_name_size = get_size(db_options->volume_name);
 	size_t buffer_len = par_net_open_calc_size(name_size, volume_name_size);
+	buffer_len += sizeof(uint32_t);
 	char *buffer = malloc(buffer_len);
 
 	uint32_t opcode = OPCODE_OPEN;
@@ -107,7 +111,7 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 		par_net_open_req_create(db_options->create_flag, name_size, db_options->db_name, volume_name_size,
 					db_options->volume_name, db_options->options->value, buffer, &buffer_len);
 
-	char *serialized_buffer = par_net_open_serialize(request, &buffer_len);
+	char *serialized_buffer = (char *)request - sizeof(uint32_t);
 
 	if (par_net_send(serialized_buffer, &buffer_len) == 1) {
 		*error_message = "Could not send to server";
@@ -134,21 +138,20 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 //cppcheck-suppress constParameterPointer
 struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
-	struct par_put_metadata sample_return_value;
-
-	uint64_t region_id = 12;
+	struct par_put_metadata sample_return_value = { 0 };
 
 	size_t buffer_len = par_net_put_calc_size(key_value->k.size, key_value->v.val_size);
+	buffer_len += sizeof(uint32_t);
 	char *buffer = malloc(buffer_len);
 
 	uint32_t opcode = OPCODE_PUT;
 	buffer[0] = opcode;
 
-	struct par_net_put_req *request = par_net_put_req_create(region_id, key_value->k.size, key_value->k.data,
-								 key_value->v.val_size, key_value->v.val_buffer, buffer,
-								 &buffer_len);
+	struct par_net_put_req *request = par_net_put_req_create(*(uint64_t *)handle, key_value->k.size,
+								 key_value->k.data, key_value->v.val_size,
+								 key_value->v.val_buffer, buffer, &buffer_len);
 
-	char *serialized_buffer = par_net_put_serialize(request, &buffer_len);
+	char *serialized_buffer = (char *)request - sizeof(uint32_t);
 
 	if (par_net_send(serialized_buffer, &buffer_len) == 1) {
 		*error_message = "Could not send to server";
@@ -193,6 +196,23 @@ uint64_t par_init_compaction_id(par_handle handle)
 // cppcheck-suppress constParameterPointer
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)
 {
+	size_t buffer_len = par_net_del_calc_size(key->size);
+	buffer_len += sizeof(uint32_t);
+	char *buffer = malloc(buffer_len);
+
+	uint32_t opcode = OPCODE_DEL;
+	buffer[0] = opcode;
+
+	struct par_net_del_req *request =
+		par_net_del_req_create(*(uint64_t *)handle, key->size, key->data, buffer, &buffer_len);
+
+	char *serialized_buffer = (char *)request - sizeof(uint32_t);
+
+	if (par_net_send(serialized_buffer, &buffer_len) == 1) {
+		*error_message = "Could not send to server";
+		return;
+	}
+
 	return;
 }
 

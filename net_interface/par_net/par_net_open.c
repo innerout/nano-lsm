@@ -18,7 +18,7 @@ uint32_t get_size(const char *buffer)
 
 size_t par_net_open_calc_size(uint32_t name_size, uint32_t volume_name_size)
 {
-	return sizeof(uint32_t) + sizeof(struct par_net_open_req) + name_size + volume_name_size;
+	return sizeof(struct par_net_open_req) + name_size + volume_name_size;
 }
 
 struct par_net_open_req *par_net_open_req_create(uint8_t flag, uint32_t name_size, const char *name,
@@ -40,41 +40,26 @@ struct par_net_open_req *par_net_open_req_create(uint8_t flag, uint32_t name_siz
 	return request;
 }
 
-char *par_net_open_serialize(struct par_net_open_req *request, size_t *buffer_len)
+uint64_t par_net_get_optvalue(char *buffer)
 {
-	char *buffer = (char *)request - sizeof(uint32_t);
-	return buffer;
+	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
+	return request->opt_value;
 }
 
-struct par_net_rep par_net_open_deserialize(char *buffer, size_t *buffer_len)
+uint32_t par_net_get_db_name_size(char *buffer)
 {
-	struct par_net_rep open_reply;
-	if (*buffer_len < sizeof(struct par_net_open_req)) {
-		open_reply.status = REP_FAIL;
-		return open_reply;
-	}
-
 	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
+	return request->name_size;
+}
 
-	char *db_name = (char *)malloc(request->name_size);
-	char *volume_name = (char *)malloc(request->volume_name_size);
+uint32_t par_net_get_volume_size(char *buffer)
+{
+	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
+	return request->volume_name_size;
+}
 
-	memcpy(db_name, buffer + sizeof(uint32_t) + sizeof(struct par_net_open_req), request->name_size);
-	memcpy(volume_name, buffer + sizeof(uint32_t) + sizeof(struct par_net_open_req) + request->name_size,
-	       request->volume_name_size);
-
-	par_db_options *db_options = malloc(sizeof(par_db_options));
-	db_options->options = malloc(sizeof(struct par_options_desc));
-
-	db_options->create_flag = request->flag;
-	db_options->db_name = db_name;
-	db_options->options->value = request->opt_value;
-	db_options->volume_name = volume_name;
-
-	par_open(db_options, NULL);
-
-	//Call destroy here
-
-	open_reply.status = REP_SUCCESS;
-	return open_reply;
+uint8_t par_net_get_flag(char *buffer)
+{
+	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
+	return request->flag;
 }

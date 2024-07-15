@@ -59,18 +59,6 @@ struct par_net_open_req *par_net_open_req_create(uint8_t flag, uint32_t name_siz
 
 /**
   *
-  * @brief Serializes par_open data to be sent over through the network
-  *
-  * @param request
-  * @param buffer_len
-  *
-  * @return buffer of serialized data on success and NULL on failure
-  *
-  */
-char *par_net_open_serialize(struct par_net_open_req *request, size_t *buffer_len);
-
-/**
-  *
   * @brief Deserializes par_open data after sent through the network
   *
   * @param buffer
@@ -79,6 +67,14 @@ char *par_net_open_serialize(struct par_net_open_req *request, size_t *buffer_le
   * @return An object of the par_net_put_req struct on success and NULL on failure
   *
   */
-struct par_net_rep par_net_open_deserialize(char *buffer, size_t *buffer_len);
+struct par_net_rep par_net_call_open(char *buffer);
+
+uint64_t par_net_get_optvalue(char *buffer);
+
+uint32_t par_net_get_db_name_size(char *buffer);
+
+uint32_t par_net_get_volume_size(char *buffer);
+
+uint8_t par_net_get_flag(char *buffer);
 
 #endif

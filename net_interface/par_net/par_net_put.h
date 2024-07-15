@@ -8,9 +8,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define REP_FAIL 1
-#define REP_SUCCESS 0
-
 struct par_net_put_req;
 
 struct par_net_rep;
@@ -35,30 +32,12 @@ struct par_net_put_req *par_net_put_req_create(uint64_t region_id, uint32_t key_
 					       uint32_t value_size, const char *value, char *buffer,
 					       size_t *buffer_len);
 
-/**
-  *
-  * @brief Serializes par_put data to be sent over through the network
-  *
-  * @param request
-  * @param buffer_len
-  *
-  * @return buffer of serialized data on success and NULL on failure
-  *
-  */
-char *par_net_put_serialize(struct par_net_put_req *request, size_t *buffer_len);
-
-/**
-  *
-  * @brief Deserializes par_put data after sent through the network
-  *
-  * @param buffer
-  * @param buffer_len
-  *
-  * @return An object of the par_net_put_req struct on success and NULL on failure
-  *
-  */
-struct par_net_rep par_net_put_deserialize(char *buffer, size_t *buffer_len);
-
 struct par_net_put_req *par_net_put_destroy(struct par_net_put_req *par_put_request);
+
+uint64_t par_net_put_get_region_id(char *buffer);
+
+uint32_t par_net_put_get_key_size(char *buffer);
+
+uint32_t par_net_put_get_value_size(char *buffer);
 
 #endif

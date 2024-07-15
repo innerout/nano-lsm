@@ -63,6 +63,10 @@ char *par_net_del_serialize(struct par_net_del_req *request, size_t *buffer_len)
   * @return An object of the par_net_put_req struct on success and NULL on failure
   *
   */
-struct par_net_rep par_net_del_deserialize(char *buffer, size_t *buffer_len);
+struct par_net_rep par_net_call_del(char *buffer);
+
+uint64_t par_net_del_get_region_id(char *buffer);
+
+uint32_t par_net_del_get_key_size(char *buffer);
 
 #endif

@@ -89,7 +89,7 @@ add_executable(
   server.${LIB}
   ../net_interface/server/parallax_server.c
   ../net_interface/server/server_handle.c
-  ../net_interface/par_net/par_net_deserialize.c
+  ../net_interface/par_net/par_net.c
   ../net_interface/par_net/par_net_open.c
   ../net_interface/par_net/par_net_put.c
   ../net_interface/par_net/par_net_delete.c)

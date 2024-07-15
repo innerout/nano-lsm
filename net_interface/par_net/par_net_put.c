@@ -12,7 +12,7 @@ struct par_net_rep {
 
 size_t par_net_put_calc_size(uint32_t key_size, uint32_t value_size)
 {
-	return sizeof(uint32_t) + sizeof(struct par_net_put_req) + key_size + value_size;
+	return sizeof(struct par_net_put_req) + key_size + value_size;
 }
 
 struct par_net_put_req *par_net_put_req_create(uint64_t region_id, uint32_t key_size, const char *key,
@@ -26,49 +26,26 @@ struct par_net_put_req *par_net_put_req_create(uint64_t region_id, uint32_t key_
 	request->key_size = key_size;
 	request->value_size = value_size;
 
-	memcpy(buffer + sizeof(uint32_t) + sizeof(struct par_net_put_req), key, key_size);
-	memcpy(buffer + sizeof(uint32_t) + sizeof(struct par_net_put_req) + key_size, value, value_size);
+	memcpy(&buffer[sizeof(uint32_t) + sizeof(struct par_net_put_req)], key, key_size);
+	memcpy(&buffer[sizeof(uint32_t) + sizeof(struct par_net_put_req) + key_size], value, value_size);
 
 	return request;
 }
 
-char *par_net_put_serialize(struct par_net_put_req *request, size_t *buffer_len)
+uint64_t par_net_put_get_region_id(char *buffer)
 {
-	char *buffer = (char *)request - sizeof(uint32_t);
-	return buffer;
+	struct par_net_put_req *request = (struct par_net_put_req *)(buffer + sizeof(uint32_t));
+	return request->region_id;
 }
 
-struct par_net_rep par_net_put_deserialize(char *buffer, size_t *buffer_len)
+uint32_t par_net_put_get_key_size(char *buffer)
 {
-	struct par_net_rep put_reply;
-
-	if (*buffer_len < sizeof(struct par_net_put_req)) {
-		put_reply.status = REP_FAIL;
-		return put_reply;
-	}
-
 	struct par_net_put_req *request = (struct par_net_put_req *)(buffer + sizeof(uint32_t));
+	return request->key_size;
+}
 
-	char *key = (char *)malloc(request->key_size);
-	char *value = (char *)malloc(request->value_size);
-
-	memcpy(key, buffer + sizeof(uint32_t) + sizeof(struct par_net_put_req), request->key_size);
-	memcpy(value, buffer + sizeof(uint32_t) + sizeof(struct par_net_put_req) + request->key_size,
-	       request->value_size);
-
-	par_handle handle = &(request->region_id);
-	struct par_key_value *kv = malloc(sizeof(struct par_key_value));
-	kv->k.size = request->key_size;
-	kv->k.data = key;
-
-	kv->v.val_size = request->value_size;
-	kv->v.val_buffer_size = request->value_size;
-	kv->v.val_buffer = value;
-
-	par_put(handle, kv, NULL);
-
-	//Call destroy here
-
-	put_reply.status = PAR_SUCCESS;
-	return put_reply;
+uint32_t par_net_put_get_value_size(char *buffer)
+{
+	struct par_net_put_req *request = (struct par_net_put_req *)(buffer + sizeof(uint32_t));
+	return request->value_size;
 }

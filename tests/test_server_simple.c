@@ -9,7 +9,7 @@ int main(int argc, char **argv)
 	db_options->options = malloc(sizeof(struct par_options_desc));
 
 	db_options->create_flag = PAR_CREATE_DB;
-	db_options->db_name = "My sample database";
+	db_options->db_name = "Sample database";
 	db_options->options->value = 123456;
 	db_options->volume_name = "Sample/Volume/name";
 
@@ -27,6 +27,15 @@ int main(int argc, char **argv)
 	kv->v.val_size = 17;
 
 	par_put(&handle_val, kv, NULL);
+
+	//PAR_DELETE TEST
+	struct par_key *k = malloc(sizeof(struct par_key));
+	handle_val = 32;
+
+	k->size = 15;
+	k->data = "Sample put key";
+
+	par_delete(&handle_val, k, NULL);
 
 	return 0;
 }
