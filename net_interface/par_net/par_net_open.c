@@ -40,26 +40,32 @@ struct par_net_open_req *par_net_open_req_create(uint8_t flag, uint32_t name_siz
 	return request;
 }
 
-uint64_t par_net_get_optvalue(char *buffer)
+uint64_t par_net_open_get_optvalue(struct par_net_open_req *request)
 {
-	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
 	return request->opt_value;
 }
 
-uint32_t par_net_get_db_name_size(char *buffer)
+uint32_t par_net_open_get_db_name_size(struct par_net_open_req *request)
 {
-	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
 	return request->name_size;
 }
 
-uint32_t par_net_get_volume_size(char *buffer)
+uint32_t par_net_open_get_volume_size(struct par_net_open_req *request)
 {
-	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
 	return request->volume_name_size;
 }
 
-uint8_t par_net_get_flag(char *buffer)
+uint8_t par_net_open_get_flag(struct par_net_open_req *request)
 {
-	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
 	return request->flag;
+}
+
+char *par_net_open_get_dbname(struct par_net_open_req *request)
+{
+	return (char *)request + sizeof(struct par_net_open_req);
+}
+
+char *par_net_open_get_volname(struct par_net_open_req *request)
+{
+	return (char *)request + sizeof(struct par_net_open_req) + request->name_size;
 }

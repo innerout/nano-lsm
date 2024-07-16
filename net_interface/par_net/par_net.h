@@ -29,11 +29,11 @@
 
 enum par_net_op { OPCODE_OPEN = 1, OPCODE_PUT, OPCODE_DEL };
 
-typedef struct par_net_rep (*deserializer)(char *buffer);
+typedef struct par_net_rep (*par_call)(char *buffer);
 typedef uint32_t (*par_get_32)(char *buffer);
 typedef uint64_t (*par_get_64)(char *buffer);
 
-extern deserializer par_net_call[4];
+extern par_call par_net_call[4];
 extern par_get_32 par_get_key_size[4];
 extern par_get_32 par_get_value_size[4];
 extern par_get_64 par_get_regionid[4];

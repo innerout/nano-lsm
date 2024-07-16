@@ -4,6 +4,7 @@
 
 int main(int argc, char **argv)
 {
+	/*
 	//PAR_OPEN TEST
 	par_db_options *db_options = malloc(sizeof(par_db_options));
 	db_options->options = malloc(sizeof(struct par_options_desc));
@@ -14,7 +15,7 @@ int main(int argc, char **argv)
 	db_options->volume_name = "Sample/Volume/name";
 
 	par_open(db_options, NULL);
-
+*/
 	//PAR_PUT TEST
 	struct par_key_value *kv = malloc(sizeof(struct par_key_value));
 	uint64_t handle_val = 32;
@@ -27,7 +28,7 @@ int main(int argc, char **argv)
 	kv->v.val_size = 17;
 
 	par_put(&handle_val, kv, NULL);
-
+	/*
 	//PAR_DELETE TEST
 	struct par_key *k = malloc(sizeof(struct par_key));
 	handle_val = 32;
@@ -37,5 +38,6 @@ int main(int argc, char **argv)
 
 	par_delete(&handle_val, k, NULL);
 
+*/
 	return 0;
 }

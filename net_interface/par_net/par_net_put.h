@@ -34,10 +34,14 @@ struct par_net_put_req *par_net_put_req_create(uint64_t region_id, uint32_t key_
 
 struct par_net_put_req *par_net_put_destroy(struct par_net_put_req *par_put_request);
 
-uint64_t par_net_put_get_region_id(char *buffer);
+uint64_t par_net_put_get_region_id(struct par_net_put_req *request);
 
-uint32_t par_net_put_get_key_size(char *buffer);
+uint32_t par_net_put_get_key_size(struct par_net_put_req *request);
 
-uint32_t par_net_put_get_value_size(char *buffer);
+uint32_t par_net_put_get_value_size(struct par_net_put_req *request);
+
+char *par_net_put_get_key(struct par_net_put_req *request);
+
+char *par_net_put_get_value(struct par_net_put_req *request);
 
 #endif

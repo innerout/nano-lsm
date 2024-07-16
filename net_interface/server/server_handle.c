@@ -219,8 +219,7 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 	}
 
 	if (argc <= 1) {
-		fprintf(stderr, USAGE_STRING);
-		exit(EXIT_FAILURE);
+		log_info(USAGE_STRING) exit(EXIT_FAILURE);
 	}
 
 	struct server_options *opts;
@@ -233,7 +232,7 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 
 	for (int i = 1; i < argc; ++i) {
 		if (argv[i][0] != '-') {
-			fprintf(stderr, ERROR_STRING " parallax_server: unknown option '%s'\n", argv[i]);
+			log_info(ERROR_STRING " parallax_server: unknown option '%s'\n", argv[i]);
 			free(opts);
 			exit(EXIT_FAILURE);
 		}
@@ -252,21 +251,18 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 
 			if (errno) {
 				if (errno == EINVAL)
-					fprintf(stderr,
-						ERROR_STRING " parallax_server: invalid number in option '%s'\n",
-						argv[i - 1U]);
+					log_info(ERROR_STRING " parallax_server: invalid number in option '%s'\n",
+						 argv[i - 1U]);
 				else
-					fprintf(stderr,
-						ERROR_STRING " parallax_server: number out-of-range in option '%s'\n",
-						argv[i - 1U]);
-
+					log_info(ERROR_STRING " parallax_server: number out-of-range in option '%s'\n",
+						 argv[i - 1U]);
 				free(opts);
 				exit(EXIT_FAILURE);
 			}
 
 			if (thrnum < 0) {
-				fprintf(stderr, ERROR_STRING " parallax_server: invalid number in option '%s'\n",
-					argv[i - 1U]);
+				log_info(ERROR_STRING " parallax_server: invalid number in option '%s'\n",
+					 argv[i - 1U]);
 				free(opts);
 				exit(EXIT_FAILURE);
 			}
@@ -279,13 +275,11 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 
 			if (errno) {
 				if (errno == EINVAL)
-					fprintf(stderr,
-						ERROR_STRING " parallax_server: invalid number in option '%s'\n",
-						argv[i - 1U]);
+					log_info(ERROR_STRING " parallax_server: invalid number in option '%s'\n",
+						 argv[i - 1U]);
 				else
-					fprintf(stderr,
-						ERROR_STRING " parallax_server: number out-of-range in option '%s'\n",
-						argv[i - 1U]);
+					log_info(ERROR_STRING " parallax_server: number out-of-range in option '%s'\n",
+						 argv[i - 1U]);
 
 				free(opts);
 				exit(EXIT_FAILURE);
@@ -874,27 +868,20 @@ struct par_net_rep {
 	uint32_t status;
 } __attribute__((packed));
 
-char *par_get_buf(char *par_buf)
-{
-	char *par_data;
-	par_data = par_buf;
-	return par_data;
-}
-
 struct par_net_rep par_net_call_open(char *buffer)
 {
 	struct par_net_rep open_reply;
 	open_reply.status = 1;
 
-	uint64_t opt_value = par_net_get_optvalue(buffer);
-	uint32_t db_name_size = par_net_get_db_name_size(buffer);
-	uint32_t volume_name_size = par_net_get_volume_size(buffer);
-	uint8_t flag = par_net_get_flag(buffer);
+	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
 
-	size_t total_size = 3 * sizeof(uint32_t) + sizeof(uint64_t) + sizeof(uint8_t);
+	uint64_t opt_value = par_net_open_get_optvalue(request);
+	uint32_t db_name_size = par_net_open_get_db_name_size(request);
+	uint32_t volume_name_size = par_net_open_get_volume_size(request);
+	uint8_t flag = par_net_open_get_flag(request);
 
-	char *db_name = par_get_buf(buffer + total_size);
-	char *volume_name = par_get_buf(buffer + total_size + db_name_size);
+	char *db_name = par_net_open_get_dbname(request);
+	char *volume_name = par_net_open_get_volname(request);
 
 	par_db_options *db_options = malloc(sizeof(par_db_options));
 	db_options->options = malloc(sizeof(struct par_options_desc));
@@ -921,23 +908,24 @@ struct par_net_rep par_net_call_put(char *buffer)
 	struct par_net_rep put_reply;
 	put_reply.status = 1;
 
-	uint64_t region_id = par_get_regionid[OPCODE_PUT](buffer);
-	uint32_t key_size = par_get_key_size[OPCODE_PUT](buffer);
-	uint32_t value_size = par_get_value_size[OPCODE_PUT](buffer);
-	size_t total_size = 3 * sizeof(uint32_t) + sizeof(uint64_t);
+	struct par_net_put_req *request = (struct par_net_put_req *)(buffer + sizeof(uint32_t));
 
-	char *key_data = par_get_buf(buffer + total_size);
-	char *val_data = par_get_buf(buffer + total_size + key_size);
+	uint64_t region_id = par_net_put_get_region_id(request);
+	uint32_t key_size = par_net_put_get_key_size(request);
+	uint32_t value_size = par_net_put_get_value_size(request);
 
-	struct par_key_value *kv = malloc(sizeof(struct par_key_value));
-	kv->k.size = key_size;
-	kv->k.data = key_data;
-	kv->v.val_size = value_size;
-	kv->v.val_buffer_size = value_size;
-	kv->v.val_buffer = val_data;
+	char *key_data = par_net_put_get_key(request);
+	char *val_data = par_net_put_get_value(request);
+
+	struct par_key_value kv = { 0 };
+	kv.k.size = key_size;
+	kv.k.data = key_data;
+	kv.v.val_size = value_size;
+	kv.v.val_buffer_size = value_size;
+	kv.v.val_buffer = val_data;
 
 	const char *error_message = NULL;
-	par_put((par_handle)&region_id, kv, &error_message);
+	par_put((par_handle)&region_id, &kv, &error_message);
 
 	if (error_message) {
 		log_fatal("%s", error_message);
@@ -953,18 +941,19 @@ struct par_net_rep par_net_call_del(char *buffer)
 	struct par_net_rep del_reply;
 	del_reply.status = 1;
 
-	uint64_t region_id = par_get_regionid[OPCODE_DEL](buffer);
-	uint32_t key_size = par_get_key_size[OPCODE_PUT](buffer);
-	size_t total_size = 2 * sizeof(uint32_t) + sizeof(uint64_t);
+	struct par_net_del_req *request = (struct par_net_del_req *)(buffer + sizeof(uint32_t));
 
-	char *key_data = par_get_buf(buffer + total_size);
+	uint64_t region_id = par_net_del_get_region_id(request);
+	uint32_t key_size = par_net_del_get_key_size(request);
 
-	struct par_key *key = malloc(sizeof(struct par_key));
-	key->size = key_size;
-	key->data = key_data;
+	char *key_data = par_net_del_get_key(request);
+
+	struct par_key key = { 0 };
+	key.size = key_size;
+	key.data = key_data;
 
 	const char *error_message = NULL;
-	par_delete((par_handle)&region_id, key, &error_message);
+	par_delete((par_handle)&region_id, &key, &error_message);
 
 	if (error_message) {
 		log_fatal("%s", error_message);
@@ -996,6 +985,10 @@ static int __par_handle_req(struct worker *restrict this, int client_sock, struc
 	}
 
 	uint32_t opcode = par_find_opcode(msg.msg_iov->iov_base);
+
+	if (opcode == 0)
+		return EXIT_FAILURE;
+
 	struct par_net_rep reply = par_net_call[opcode](msg.msg_iov->iov_base);
 
 	if (reply.status == 1) {

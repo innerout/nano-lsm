@@ -69,12 +69,16 @@ struct par_net_open_req *par_net_open_req_create(uint8_t flag, uint32_t name_siz
   */
 struct par_net_rep par_net_call_open(char *buffer);
 
-uint64_t par_net_get_optvalue(char *buffer);
+uint64_t par_net_open_get_optvalue(struct par_net_open_req *request);
 
-uint32_t par_net_get_db_name_size(char *buffer);
+uint32_t par_net_open_get_db_name_size(struct par_net_open_req *request);
 
-uint32_t par_net_get_volume_size(char *buffer);
+uint32_t par_net_open_get_volume_size(struct par_net_open_req *request);
 
-uint8_t par_net_get_flag(char *buffer);
+uint8_t par_net_open_get_flag(struct par_net_open_req *request);
+
+char *par_net_open_get_dbname(struct par_net_open_req *request);
+
+char *par_net_open_get_volname(struct par_net_open_req *request);
 
 #endif

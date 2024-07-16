@@ -29,14 +29,17 @@ struct par_net_del_req *par_net_del_req_create(uint64_t region_id, uint32_t key_
 	return request;
 }
 
-uint64_t par_net_del_get_region_id(char *buffer)
+uint64_t par_net_del_get_region_id(struct par_net_del_req *request)
 {
-	struct par_net_del_req *request = (struct par_net_del_req *)(buffer + sizeof(uint32_t));
 	return request->region_id;
 }
 
-uint32_t par_net_del_get_key_size(char *buffer)
+uint32_t par_net_del_get_key_size(struct par_net_del_req *request)
 {
-	struct par_net_del_req *request = (struct par_net_del_req *)(buffer + sizeof(uint32_t));
 	return request->key_size;
+}
+
+char *par_net_del_get_key(struct par_net_del_req *request)
+{
+	return (char *)request + sizeof(struct par_net_del_req);
 }
