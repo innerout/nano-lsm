@@ -9,9 +9,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#define REP_FAIL 1
-#define REP_SUCCESS 0
-
 struct par_net_del_req;
 
 struct par_net_del_rep;
@@ -56,16 +53,56 @@ struct par_net_del_req *par_net_del_req_create(uint64_t region_id, uint32_t key_
 
 char *par_net_call_del(char *buffer, size_t *buffer_len);
 
+/**
+ * @brief getter for region_id
+ *
+ * @param request
+ *
+ * @return region_id
+*/
 uint64_t par_net_del_get_region_id(struct par_net_del_req *request);
 
+/**
+ * @brief getter for key size
+ *
+ * @param request
+ *
+ * @return key size
+*/
 uint32_t par_net_del_get_key_size(struct par_net_del_req *request);
 
+/**
+ * @brief getter for key
+ *
+ * @param request
+ *
+ * @return key
+*/
 char *par_net_del_get_key(struct par_net_del_req *request);
 
-size_t par_net_open_rep_calc_size();
+/**
+ * @brief calculates the size of the par_net_del_req struct
+ *
+ * @return the par_net_del_rep struct's size
+*/
+size_t par_net_del_rep_calc_size();
 
+/**
+ * @brief Constructor for the par_net_del_rep class, initializes values to reply to client
+ *
+ * @param status - 0 for success and 1 for failure
+ * @param rep_len - length of the reply
+ *
+ * @return par_net_del_rep object
+*/
 struct par_net_del_rep *par_net_del_rep_create(int status, size_t *rep_len);
 
+/**
+ * @brief Takes the reply from server and checks if it's done correctly
+ *
+ * @param buffer
+ *
+*/
 void par_net_del_rep_handle_reply(char *buffer);
 
 #endif
