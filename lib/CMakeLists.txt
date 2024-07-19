@@ -89,10 +89,10 @@ add_executable(
   server.${LIB}
   ../net_interface/server/parallax_server.c
   ../net_interface/server/server_handle.c
-  ../net_interface/par_net/par_net.c
   ../net_interface/par_net/par_net_open.c
   ../net_interface/par_net/par_net_put.c
-  ../net_interface/par_net/par_net_delete.c)
+  ../net_interface/par_net/par_net_delete.c
+  ../net_interface/par_net/par_net_get.c)
 target_compile_definitions(server.${LIB} PUBLIC -DSTANDALONE_FORMAT)
 target_link_libraries(server.${LIB} PRIVATE ${LIB} ${DEPENDENCIES})
 

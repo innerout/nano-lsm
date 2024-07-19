@@ -3,16 +3,18 @@
 
 #include "../include/parallax/parallax.h"
 #include "../include/parallax/structures.h"
+#include <log.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define REP_FAIL 1
 #define REP_SUCCESS 0
 
 struct par_net_del_req;
 
-struct par_net_rep;
+struct par_net_del_rep;
 
 /**
   * @brief calculates total size of par_net_del_req struct and the sizes
@@ -23,7 +25,7 @@ struct par_net_rep;
   * @return Total size of struct and key
   *
   */
-size_t par_net_del_calc_size(uint32_t key_size);
+size_t par_net_del_req_calc_size(uint32_t key_size);
 
 /**
   *
@@ -51,24 +53,19 @@ struct par_net_del_req *par_net_del_req_create(uint64_t region_id, uint32_t key_
   * @return buffer of serialized data on success and NULL on failure
   *
   */
-char *par_net_del_serialize(struct par_net_del_req *request, size_t *buffer_len);
 
-/**
-  *
-  * @brief Deserializes par_delete data after sent through the network
-  *
-  * @param buffer
-  * @param buffer_len
-  *
-  * @return An object of the par_net_put_req struct on success and NULL on failure
-  *
-  */
-struct par_net_rep par_net_call_del(char *buffer);
+char *par_net_call_del(char *buffer, size_t *buffer_len);
 
 uint64_t par_net_del_get_region_id(struct par_net_del_req *request);
 
 uint32_t par_net_del_get_key_size(struct par_net_del_req *request);
 
 char *par_net_del_get_key(struct par_net_del_req *request);
+
+size_t par_net_open_rep_calc_size();
+
+struct par_net_del_rep *par_net_del_rep_create(int status, size_t *rep_len);
+
+void par_net_del_rep_handle_reply(char *buffer);
 
 #endif

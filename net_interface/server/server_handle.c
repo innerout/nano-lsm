@@ -1,7 +1,6 @@
 #define _GNU_SOURCE
 #include "server_handle.h"
 #include "../par_net/par_net.h"
-#include "../par_net/par_net_open.h"
 #include "allocator/djb2.h"
 #include "btree/btree.h"
 #include "btree/gc.h"
@@ -219,7 +218,8 @@ int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *r
 	}
 
 	if (argc <= 1) {
-		log_info(USAGE_STRING) exit(EXIT_FAILURE);
+		log_info(USAGE_STRING);
+		exit(EXIT_FAILURE);
 	}
 
 	struct server_options *opts;
@@ -868,52 +868,62 @@ struct par_net_rep {
 	uint32_t status;
 } __attribute__((packed));
 
-struct par_net_rep par_net_call_open(char *buffer)
+uint32_t par_find_opcode(char *buffer)
 {
-	struct par_net_rep open_reply;
-	open_reply.status = 1;
+	uint32_t opcode;
+	memcpy(&opcode, buffer, sizeof(uint32_t));
 
+	if (opcode >= MAX_OPCODE)
+		return 0;
+
+	return opcode;
+}
+
+par_call par_net_call[] = { NULL, par_net_call_open, par_net_call_put, par_net_call_del, par_net_call_get };
+
+char *par_net_call_open(char *buffer, size_t *buffer_len)
+{
+	struct par_net_open_rep *reply;
 	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
 
 	uint64_t opt_value = par_net_open_get_optvalue(request);
 	uint32_t db_name_size = par_net_open_get_db_name_size(request);
 	uint32_t volume_name_size = par_net_open_get_volume_size(request);
 	uint8_t flag = par_net_open_get_flag(request);
-
 	char *db_name = par_net_open_get_dbname(request);
 	char *volume_name = par_net_open_get_volname(request);
 
-	par_db_options *db_options = malloc(sizeof(par_db_options));
-	db_options->options = malloc(sizeof(struct par_options_desc));
-
-	db_options->create_flag = flag;
-	db_options->db_name = db_name;
-	db_options->options->value = opt_value;
-	db_options->volume_name = volume_name;
+	par_db_options db_options = { 0 };
+	db_options.options = malloc(sizeof(struct par_options_desc));
+	db_options.create_flag = flag;
+	db_options.db_name = db_name;
+	db_options.options->value = opt_value;
+	db_options.volume_name = volume_name;
 
 	const char *error_message = NULL;
-	par_open(db_options, &error_message);
+	par_handle handle = par_open(&db_options, &error_message);
 
 	if (error_message) {
 		log_fatal("%s", error_message);
-		return open_reply;
+		reply = par_net_open_rep_create(1, NULL, buffer_len);
+		return (char *)reply;
 	}
 
-	open_reply.status = 0;
-	return open_reply;
+	free(db_options.options);
+
+	reply = par_net_open_rep_create(0, handle, buffer_len);
+
+	return (char *)reply;
 }
 
-struct par_net_rep par_net_call_put(char *buffer)
+char *par_net_call_put(char *buffer, size_t *buffer_len)
 {
-	struct par_net_rep put_reply;
-	put_reply.status = 1;
-
+	struct par_net_put_rep *reply;
 	struct par_net_put_req *request = (struct par_net_put_req *)(buffer + sizeof(uint32_t));
 
 	uint64_t region_id = par_net_put_get_region_id(request);
 	uint32_t key_size = par_net_put_get_key_size(request);
 	uint32_t value_size = par_net_put_get_value_size(request);
-
 	char *key_data = par_net_put_get_key(request);
 	char *val_data = par_net_put_get_value(request);
 
@@ -925,27 +935,26 @@ struct par_net_rep par_net_call_put(char *buffer)
 	kv.v.val_buffer = val_data;
 
 	const char *error_message = NULL;
-	par_put((par_handle)&region_id, &kv, &error_message);
+	struct par_put_metadata metadata;
+	metadata = par_put((par_handle)&region_id, &kv, &error_message);
 
 	if (error_message) {
 		log_fatal("%s", error_message);
-		return put_reply;
+		reply = par_net_put_rep_create(1, metadata, buffer_len);
+		return (char *)reply;
 	}
 
-	put_reply.status = 0;
-	return put_reply;
+	reply = par_net_put_rep_create(0, metadata, buffer_len);
+	return (char *)reply;
 }
 
-struct par_net_rep par_net_call_del(char *buffer)
+char *par_net_call_del(char *buffer, size_t *buffer_len)
 {
-	struct par_net_rep del_reply;
-	del_reply.status = 1;
-
+	struct par_net_del_rep *reply;
 	struct par_net_del_req *request = (struct par_net_del_req *)(buffer + sizeof(uint32_t));
 
 	uint64_t region_id = par_net_del_get_region_id(request);
 	uint32_t key_size = par_net_del_get_key_size(request);
-
 	char *key_data = par_net_del_get_key(request);
 
 	struct par_key key = { 0 };
@@ -957,11 +966,45 @@ struct par_net_rep par_net_call_del(char *buffer)
 
 	if (error_message) {
 		log_fatal("%s", error_message);
-		return del_reply;
+		reply = par_net_del_rep_create(1, buffer_len);
+		return (char *)reply;
 	}
 
-	del_reply.status = 0;
-	return del_reply;
+	reply = par_net_del_rep_create(0, buffer_len);
+	return (char *)reply;
+}
+
+char *par_net_call_get(char *buffer, size_t *buffer_len)
+{
+	struct par_net_get_rep *reply;
+	struct par_net_get_req *request = (struct par_net_get_req *)(buffer + sizeof(uint32_t));
+
+	uint64_t region_id = par_net_get_get_region_id(request);
+	uint32_t key_size = par_net_get_get_key_size(request);
+	uint32_t value_size = par_net_get_get_value_size(request);
+	char *key_data = par_net_get_get_key(request);
+	char *val_data = par_net_get_get_value(request);
+
+	struct par_key k;
+	struct par_value v;
+
+	k.size = key_size;
+	k.data = key_data;
+	v.val_size = value_size;
+	v.val_buffer_size = value_size;
+	v.val_buffer = val_data;
+
+	const char *error_message = NULL;
+	par_get((par_handle)&region_id, &k, &v, &error_message);
+
+	if (error_message) {
+		log_fatal("%s", error_message);
+		reply = par_net_get_rep_create(1, buffer_len);
+		return (char *)reply;
+	}
+
+	reply = par_net_get_rep_create(0, buffer_len);
+	return (char *)reply;
 }
 
 static int __par_handle_req(struct worker *restrict this, int client_sock, struct tcp_req *restrict req)
@@ -979,19 +1022,34 @@ static int __par_handle_req(struct worker *restrict this, int client_sock, struc
 	msg.msg_iovlen = 1;
 
 	bytes_received = recvmsg(client_sock, &msg, 0);
+
 	if (bytes_received < 0) {
 		log_error("recvmsg failed");
 		return EXIT_FAILURE;
 	}
+	log_info("message received");
 
 	uint32_t opcode = par_find_opcode(msg.msg_iov->iov_base);
 
 	if (opcode == 0)
 		return EXIT_FAILURE;
 
-	struct par_net_rep reply = par_net_call[opcode](msg.msg_iov->iov_base);
+	size_t rep_buffer_len = 0;
+	char *reply = par_net_call[opcode](msg.msg_iov->iov_base, &rep_buffer_len);
 
-	if (reply.status == 1) {
+	struct iovec iov_reply[1];
+	struct msghdr msg_reply = { 0 };
+
+	iov_reply[0].iov_base = reply;
+	iov_reply[0].iov_len = rep_buffer_len;
+
+	memset(&msg_reply, 0, sizeof(msg_reply));
+	msg_reply.msg_iov = iov_reply;
+	msg_reply.msg_iovlen = 1;
+
+	ssize_t bytes_sent = sendmsg(client_sock, &msg_reply, 0);
+	if (bytes_sent < 0) {
+		log_error("sendmsg failed");
 		return EXIT_FAILURE;
 	}
 

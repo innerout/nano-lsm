@@ -3,17 +3,19 @@
 
 #include "../include/parallax/parallax.h"
 #include "../include/parallax/structures.h"
+#include <log.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define REP_FAIL 1
 #define REP_SUCCESS 0
 
 struct par_net_open_req;
 
-struct par_net_rep;
+struct par_net_open_rep;
 
 /**
   * @brief calcutes the size of a string
@@ -22,7 +24,7 @@ struct par_net_rep;
   *
   * @return the string's size
   */
-uint32_t get_size(const char *buffer);
+uint32_t par_net_get_size(const char *buffer);
 
 /**
   * @brief calculates total size of par_net_open_req struct and the sizes
@@ -34,7 +36,7 @@ uint32_t get_size(const char *buffer);
   * @return Total size of struct, name and volume name
   *
   */
-size_t par_net_open_calc_size(uint32_t name_size, uint32_t volume_name_size);
+size_t par_net_open_req_calc_size(uint32_t name_size, uint32_t volume_name_size);
 
 /**
   *
@@ -57,17 +59,7 @@ struct par_net_open_req *par_net_open_req_create(uint8_t flag, uint32_t name_siz
 						 uint32_t volume_name_size, const char *volume_name, uint64_t opt_value,
 						 char *buffer, size_t *buffer_len);
 
-/**
-  *
-  * @brief Deserializes par_open data after sent through the network
-  *
-  * @param buffer
-  * @param buffer_len
-  *
-  * @return An object of the par_net_put_req struct on success and NULL on failure
-  *
-  */
-struct par_net_rep par_net_call_open(char *buffer);
+char *par_net_call_open(char *buffer, size_t *buffer_len);
 
 uint64_t par_net_open_get_optvalue(struct par_net_open_req *request);
 
@@ -80,5 +72,11 @@ uint8_t par_net_open_get_flag(struct par_net_open_req *request);
 char *par_net_open_get_dbname(struct par_net_open_req *request);
 
 char *par_net_open_get_volname(struct par_net_open_req *request);
+
+size_t par_net_open_rep_calc_size();
+
+struct par_net_open_rep *par_net_open_rep_create(int status, par_handle handle, size_t *rep_len);
+
+par_handle par_net_open_rep_handle_reply(char *buffer);
 
 #endif

@@ -2,18 +2,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int main(int argc, char **argv)
+int main()
 {
 	//PAR_OPEN TEST
 	par_db_options *db_options = malloc(sizeof(par_db_options));
 	db_options->options = malloc(sizeof(struct par_options_desc));
 
 	db_options->create_flag = PAR_CREATE_DB;
-	db_options->db_name = "Sample database";
-	db_options->options->value = 123456;
-	db_options->volume_name = "Sample/Volume/name";
+	db_options->db_name = "database";
+	db_options->options->value = 90909;
+	db_options->volume_name = "~/db";
 
-	par_open(db_options, NULL);
+	par_handle handle = par_open(db_options, NULL);
 
 	//PAR_PUT TEST
 	struct par_key_value *kv = malloc(sizeof(struct par_key_value));
@@ -26,7 +26,7 @@ int main(int argc, char **argv)
 	kv->v.val_buffer_size = 17;
 	kv->v.val_size = 17;
 
-	par_put(&handle_val, kv, NULL);
+	struct par_put_metadata metadata = par_put(&handle_val, kv, NULL);
 
 	//PAR_DELETE TEST
 	struct par_key *k = malloc(sizeof(struct par_key));

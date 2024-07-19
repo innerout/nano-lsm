@@ -66,7 +66,11 @@ if(PARALLAX_BUILD_TESTING)
   if(BDB_LIBRARY AND NOT ${BDB_PATH} STREQUAL "")
     message("Tiresias and Manto tests will be built.")
     add_executable(tiresias tiresias.c arg_parser.c)
-    target_link_libraries(tiresias "${PROJECT_NAME}" ${BDB_LIBRARY})
+    if(TCP)
+      target_link_libraries(tiresias "${PROJECT_NAME}_server" ${BDB_LIBRARY})
+    else()
+      target_link_libraries(tiresias "${PROJECT_NAME}" ${BDB_LIBRARY})
+    endif()
     add_parallax_test(
       NAME
       tiresias
