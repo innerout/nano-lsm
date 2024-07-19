@@ -936,7 +936,7 @@ char *par_net_call_put(char *buffer, size_t *buffer_len)
 
 	const char *error_message = NULL;
 	struct par_put_metadata metadata;
-	metadata = par_put((par_handle)&region_id, &kv, &error_message);
+	metadata = par_put((par_handle)(uintptr_t)region_id, &kv, &error_message);
 
 	if (error_message) {
 		log_fatal("%s", error_message);
@@ -962,7 +962,7 @@ char *par_net_call_del(char *buffer, size_t *buffer_len)
 	key.data = key_data;
 
 	const char *error_message = NULL;
-	par_delete((par_handle)&region_id, &key, &error_message);
+	par_delete((par_handle)(uintptr_t)region_id, &key, &error_message);
 
 	if (error_message) {
 		log_fatal("%s", error_message);
@@ -995,7 +995,7 @@ char *par_net_call_get(char *buffer, size_t *buffer_len)
 	v.val_buffer = val_data;
 
 	const char *error_message = NULL;
-	par_get((par_handle)&region_id, &k, &v, &error_message);
+	par_get((par_handle)(uintptr_t)region_id, &k, &v, &error_message);
 
 	if (error_message) {
 		log_fatal("%s", error_message);

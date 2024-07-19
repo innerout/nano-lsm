@@ -178,7 +178,7 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 	uint32_t opcode = OPCODE_PUT;
 	memcpy(buffer, &opcode, sizeof(uint32_t));
 
-	struct par_net_put_req *request = par_net_put_req_create(*(uint64_t *)handle, key_value->k.size,
+	struct par_net_put_req *request = par_net_put_req_create((uint64_t)(uintptr_t)handle, key_value->k.size,
 								 key_value->k.data, key_value->v.val_size,
 								 key_value->v.val_buffer, buffer, &buffer_len);
 
@@ -211,8 +211,9 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 	uint32_t opcode = OPCODE_GET;
 	memcpy(buffer, &opcode, sizeof(uint32_t));
 
-	struct par_net_get_req *request = par_net_get_req_create(
-		*(uint64_t *)handle, key->size, key->data, value->val_size, value->val_buffer, buffer, &buffer_len);
+	struct par_net_get_req *request = par_net_get_req_create((uint64_t)(uintptr_t)handle, key->size, key->data,
+								 value->val_size, value->val_buffer, buffer,
+								 &buffer_len);
 
 	char *serialized_buffer = (char *)request - sizeof(uint32_t);
 
@@ -260,7 +261,7 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 	memcpy(buffer, &opcode, sizeof(uint32_t));
 
 	struct par_net_del_req *request =
-		par_net_del_req_create(*(uint64_t *)handle, key->size, key->data, buffer, &buffer_len);
+		par_net_del_req_create((uint64_t)(uintptr_t)handle, key->size, key->data, buffer, &buffer_len);
 
 	char *serialized_buffer = (char *)request - sizeof(uint32_t);
 
