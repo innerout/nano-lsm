@@ -85,7 +85,7 @@ char *par_net_del_get_key(struct par_net_del_req *request);
  *
  * @return the par_net_del_rep struct's size
 */
-size_t par_net_del_rep_calc_size();
+size_t par_net_del_rep_calc_size(void);
 
 /**
  * @brief Constructor for the par_net_del_rep class, initializes values to reply to client

@@ -126,7 +126,7 @@ char *par_net_open_get_volname(struct par_net_open_req *request);
  *
  * @return the par_net_open_rep struct's size
 */
-size_t par_net_open_rep_calc_size();
+size_t par_net_open_rep_calc_size(void);
 
 /**
  * @brief Constructor for the par_net_open_rep class, initializes values to reply to client

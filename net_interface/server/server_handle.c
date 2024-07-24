@@ -125,17 +125,17 @@ _Thread_local const char *par_error_message_tl;
 #define reset_errno() errno = 0
 #define __offsetof_struct1(s, f) (__u64)(&((s *)(0UL))->f)
 
-#define req_is_invalid(req) ((__u32)(req->type) >= OPSNO)
-#define req_is_new_connection(req) (req->type == REQ_INIT_CONN)
+//#define req_is_invalid(req) ((__u32)(req->type) >= OPSNO)
+//#define req_is_new_connection(req) (req->type == REQ_INIT_CONN)
 
 #define infinite_loop_start() for (;;) {
 #define infinite_loop_end() }
 #define event_loop_start(index, limit) for (int index = 0; index < limit; ++index) {
 #define event_loop_end() }
 
-#define reqbuf_hdr_read_type(req, buf) req->type = *((__u8 *)(buf))
+//#define reqbuf_hdr_read_type(req, buf) req->type = *((__u8 *)(buf))
 
-#define MAX_REGIONS 128
+//#define MAX_REGIONS 128
 
 /***** private functions (decl) *****/
 
@@ -146,7 +146,9 @@ _Thread_local const char *par_error_message_tl;
  * @param worker
  * @return int
  */
+/*
 static int __client_version_check(int client_sock, struct worker *worker) __attribute__((nonnull(2)));
+*/
 
 /**
  * @brief
@@ -156,6 +158,7 @@ static int __client_version_check(int client_sock, struct worker *worker) __attr
  */
 static int __handle_new_connection(struct worker *this) __attribute__((nonnull));
 
+
 /**
  * @brief
  *
@@ -164,8 +167,10 @@ static int __handle_new_connection(struct worker *this) __attribute__((nonnull))
  * @param req
  * @return int
  */
+/*
 static tterr_e __req_recv(struct worker *restrict this, int client_sock, struct tcp_req *restrict req)
 	__attribute__((nonnull(1, 3)));
+*/
 
 /**
  * @brief
@@ -182,7 +187,9 @@ static int __par_handle_req(struct worker *restrict this, int client_sock, struc
  * @brief
  *
  */
+/*
 static void __parse_rest_of_header(char *restrict buf, struct tcp_req *restrict req) __attribute__((nonnull));
+*/
 
 /**
  * @brief
@@ -198,8 +205,10 @@ static int __pin_thread_to_core(int core);
  * @param key
  * @return par_handle
  */
+/*
 static par_handle __server_handle_get_db(sHandle restrict server_handle, uint32_t key_size, char *restrict key)
 	__attribute__((nonnull));
+*/
 
 /**
  * @brief
@@ -648,11 +657,11 @@ static int __handle_new_connection(struct worker *this)
 	return EXIT_SUCCESS;
 }
 
+/*
 static int __client_version_check(int client_sock, struct worker *worker)
 {
 	__u32 version = be32toh(*((__u32 *)(worker->buf.mem + 1UL)));
 
-	/** TODO: send a respond to client that uses an outdated version */
 
 	if (version != TT_VERSION) {
 		errno = ECONNREFUSED;
@@ -675,7 +684,9 @@ static int __client_version_check(int client_sock, struct worker *worker)
 
 	return EXIT_SUCCESS;
 }
+*/
 
+/*
 static void __parse_rest_of_header(char *restrict buf, struct tcp_req *restrict req)
 {
 	// steps:
@@ -683,8 +694,6 @@ static void __parse_rest_of_header(char *restrict buf, struct tcp_req *restrict 
 	// 2. save header's contents inside
 	// * parallax will use the same buffer using zero-copy!
 
-	/** GET: [ 1B type | 4B key-size | key ] **/
-	/** PUT: [ 1B type | 4B key-size | 4B value-size | key | value ] **/
 
 	*((__u32 *)(buf + 1UL)) = be32toh(*((__u32 *)(buf + 1UL)));
 	req->kv.key.size = *((__u32 *)(buf + 1UL));
@@ -694,13 +703,15 @@ static void __parse_rest_of_header(char *restrict buf, struct tcp_req *restrict 
 		req->kv.value.size = *((__u32 *)(buf + 5UL));
 		req->kv.key.data = buf + 9UL;
 		req->kv.value.data = (buf + 9UL) + req->kv.key.size;
-	} else /* REQ_GET */ {
+	} else {
 		req->kv.value.size = 0U;
 		req->kv.value.data = NULL;
 		req->kv.key.data = buf + 5UL;
 	}
 }
+*/
 
+/*
 static tterr_e __req_recv(struct worker *restrict this, int client_sock, struct tcp_req *restrict req)
 {
 	__s64 ret = recv(client_sock, this->buf.mem, DEF_BUF_SIZE, 0);
@@ -737,7 +748,7 @@ static tterr_e __req_recv(struct worker *restrict this, int client_sock, struct 
 
 	return TT_ERR_NONE;
 }
-
+*/
 static void *__handle_events(void *arg)
 {
 	struct worker *this = arg;
@@ -755,7 +766,7 @@ static void *__handle_events(void *arg)
 	int events;
 	int client_sock;
 	int event_bits;
-	int ret;
+	//int ret;
 
 	struct epoll_event rearm_event = { .events = EPOLLIN | EPOLLRDHUP | EPOLLONESHOT };
 	struct epoll_event epoll_events[EPOLL_MAX_EVENTS];
@@ -854,6 +865,7 @@ static void *__handle_events(void *arg)
 	__builtin_unreachable();
 }
 
+/*
 static par_handle __server_handle_get_db(sHandle restrict server_handle, uint32_t key_size, char *restrict key)
 {
 	struct server_handle *shandle = server_handle;
@@ -863,6 +875,7 @@ static par_handle __server_handle_get_db(sHandle restrict server_handle, uint32_
 	// printf("Chose db %lu\n", hash_id % MAX_PARALLAX_DBS);
 	return par_db;
 }
+*/
 
 struct par_net_rep {
 	uint32_t status;
@@ -879,7 +892,7 @@ uint32_t par_find_opcode(char *buffer)
 	return opcode;
 }
 
-par_call par_net_call[] = { NULL, par_net_call_open, par_net_call_put, par_net_call_del, par_net_call_get };
+par_call par_net_call[6] = { NULL, par_net_call_open, par_net_call_put, par_net_call_del, par_net_call_get, par_net_call_close };
 
 char *par_net_call_open(char *buffer, size_t *buffer_len)
 {
@@ -887,8 +900,6 @@ char *par_net_call_open(char *buffer, size_t *buffer_len)
 	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
 
 	uint64_t opt_value = par_net_open_get_optvalue(request);
-	uint32_t db_name_size = par_net_open_get_db_name_size(request);
-	uint32_t volume_name_size = par_net_open_get_volume_size(request);
 	uint8_t flag = par_net_open_get_flag(request);
 	char *db_name = par_net_open_get_dbname(request);
 	char *volume_name = par_net_open_get_volname(request);
@@ -1007,8 +1018,31 @@ char *par_net_call_get(char *buffer, size_t *buffer_len)
 	return (char *)reply;
 }
 
+char* par_net_call_close(char* buffer, size_t *buffer_len)
+{
+	struct par_net_close_rep *reply;
+	struct par_net_close_req *request = (struct par_net_close_req *)(buffer + sizeof(uint32_t));
+
+	uint64_t region_id = par_net_close_get_region_id(request);
+
+	par_handle handle = (par_handle)(uintptr_t)region_id;
+	
+	const char* return_string = par_close(handle);
+	if(!return_string){
+		log_fatal("Error in par_close");
+		reply = par_net_close_rep_create(1, return_string, buffer_len);
+		return (char*)reply;
+	}
+
+	reply = par_net_close_rep_create(0, return_string, buffer_len);
+	return (char*)reply;
+	
+}
+
 static int __par_handle_req(struct worker *restrict this, int client_sock, struct tcp_req *restrict req)
 {
+	(void)this;
+	(void)req;
 	char buffer[1024];
 	struct iovec iov[1];
 	struct msghdr msg;

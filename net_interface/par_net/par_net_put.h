@@ -89,7 +89,7 @@ char *par_net_put_get_value(struct par_net_put_req *request);
  *
  * @return the par_net_open_rep struct's size
 */
-size_t par_net_put_rep_calc_size();
+size_t par_net_put_rep_calc_size(void);
 
 /**
  * @brief Constructor for the par_net_put_rep class, initializes values to reply to client

@@ -17,8 +17,9 @@
 #include "par_net_get.h"
 #include "par_net_open.h"
 #include "par_net_put.h"
+#include "par_net_close.h"
 
-#define MAX_OPCODE 4
+#define MAX_OPCODE 6
 
 #if __BIG_ENDIAN__
 #define htonl_64(x) (x)
@@ -28,11 +29,11 @@
 #define ntohl_64(x) (((uint64_t)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
 #endif
 
-enum par_net_op { OPCODE_OPEN = 1, OPCODE_PUT, OPCODE_DEL, OPCODE_GET };
+enum par_net_op { OPCODE_OPEN = 1, OPCODE_PUT, OPCODE_DEL, OPCODE_GET, OPCODE_CLOSE };
 
 typedef char *(*par_call)(char *buffer, size_t *buffer_len);
 
-extern par_call par_net_call[5];
+extern par_call par_net_call[6];
 
 /**
   *  @brief Takes the first byte of the serialized stream and translates it to
@@ -53,6 +54,6 @@ uint32_t par_find_opcode(char *buffer);
   *
   *  @return reply buffer on success and NULL on failure
   */
-static char *par_net_send(char *buffer, size_t *buffer_len);
+char *par_net_send(char *buffer, size_t *buffer_len);
 
 #endif

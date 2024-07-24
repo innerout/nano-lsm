@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int main()
+int main(void)
 {
 	//PAR_OPEN TEST
 	par_db_options *db_options = malloc(sizeof(par_db_options));
@@ -14,6 +14,7 @@ int main()
 	db_options->volume_name = "~/db";
 
 	par_handle handle = par_open(db_options, NULL);
+	(void)handle;
 
 	//PAR_PUT TEST
 	struct par_key_value *kv = malloc(sizeof(struct par_key_value));
@@ -27,6 +28,7 @@ int main()
 	kv->v.val_size = 17;
 
 	struct par_put_metadata metadata = par_put(&handle_val, kv, NULL);
+	(void)metadata;
 
 	//PAR_DELETE TEST
 	struct par_key *k = malloc(sizeof(struct par_key));

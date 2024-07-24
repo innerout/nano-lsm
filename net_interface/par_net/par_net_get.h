@@ -72,7 +72,7 @@ char *par_net_get_get_value(struct par_net_get_req *request);
  *
  * @return the par_net_del_rep struct's size
 */
-size_t par_net_get_rep_calc_size();
+size_t par_net_get_rep_calc_size(void);
 
 /**
  * @brief Constructor for the par_net_get_rep class, initializes values to reply to client
