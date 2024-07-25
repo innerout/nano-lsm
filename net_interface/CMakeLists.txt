@@ -10,7 +10,10 @@ set(NET_LIB_SOURCE_FILES
     par_net/par_net_delete.c
     par_net/par_net_get.c
     par_net/par_net_close.c
-    ../lib/api/parallax_client_lib.c)
+    ../lib/api/parallax_client_lib.c
+    ../lib/btree/key_splice.c
+    ../lib/btree/set_options.c
+    ../lib/common/common.c)
 
 add_library(${NET_LIB} SHARED ${NET_LIB_SOURCE_FILES})
 
@@ -19,7 +22,7 @@ set_target_properties(${NET_LIB} PROPERTIES
 
 target_include_directories(${NET_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../lib/include")
 
-target_link_libraries(${NET_LIB} log)
+target_link_libraries(${NET_LIB} log yaml)
 
 install(
   TARGETS ${NET_LIB}

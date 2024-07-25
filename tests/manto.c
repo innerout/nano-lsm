@@ -12,6 +12,7 @@
 #include "../lib/btree/compaction/sst.h"
 #include "../lib/btree/conf.h"
 #include "btree/btree.h"
+#include "btree/compaction/sst.h"
 #include "btree/kv_pairs.h"
 #include "parallax/structures.h"
 #include "scanner/scanner.h"

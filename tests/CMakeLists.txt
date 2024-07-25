@@ -76,7 +76,7 @@ if(PARALLAX_BUILD_TESTING)
       --BDB_file=${BDB_PATH})
 
     add_executable(manto manto.c)
-    link_target(manto)
+    target_link_libraries(manto "${PROJECT_NAME}")
     target_link_libraries(manto ${BDB_LIBRARY} ${ART_LIB})
     add_parallax_test(
       NAME
