@@ -51,16 +51,6 @@ uint64_t par_net_open_get_optvalue(struct par_net_open_req *request)
 	return request->opt_value;
 }
 
-uint32_t par_net_open_get_db_name_size(struct par_net_open_req *request)
-{
-	return request->name_size;
-}
-
-uint32_t par_net_open_get_volume_size(struct par_net_open_req *request)
-{
-	return request->volume_name_size;
-}
-
 uint8_t par_net_open_get_flag(struct par_net_open_req *request)
 {
 	return request->flag;

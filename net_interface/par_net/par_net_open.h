@@ -77,24 +77,6 @@ char *par_net_call_open(char *buffer, size_t *buffer_len);
 uint64_t par_net_open_get_optvalue(struct par_net_open_req *request);
 
 /**
- * @brief getter for database name size
- *
- * @param request
- *
- * @return length of database name
-*/
-uint32_t par_net_open_get_db_name_size(struct par_net_open_req *request);
-
-/**
- * @brief getter for volume string size
- *
- * @param request
- *
- * @return length of volume name
-*/
-uint32_t par_net_open_get_volume_size(struct par_net_open_req *request);
-
-/**
  * @brief getter for db flag
  *
  * @param request
