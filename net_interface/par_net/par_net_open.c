@@ -1,9 +1,9 @@
 #include "par_net_open.h"
+#include "log.h"
 
 struct par_net_open_req {
 	uint64_t opt_value;
-	uint32_t name_size;
-	uint32_t volume_name_size;
+	uint32_t db_name_size;
 	uint8_t flag;
 } __attribute__((packed));
 
@@ -17,31 +17,28 @@ uint32_t par_net_get_size(const char *buffer)
 	return strlen(buffer) + 1;
 }
 
-size_t par_net_open_req_calc_size(uint32_t name_size, uint32_t volume_name_size)
+size_t par_net_open_req_calc_size(uint32_t name_size)
 {
-	return sizeof(struct par_net_open_req) + name_size + volume_name_size;
+	return sizeof(struct par_net_open_req) + name_size;
 }
 
-size_t par_net_open_rep_calc_size()
+size_t par_net_open_rep_calc_size(void)
 {
 	return sizeof(struct par_net_open_rep);
 }
 
-struct par_net_open_req *par_net_open_req_create(uint8_t flag, uint32_t name_size, const char *name,
-						 uint32_t volume_name_size, const char *volume_name, uint64_t opt_value,
+struct par_net_open_req *par_net_open_req_create(uint8_t flag, const char *name,
 						 char *buffer, size_t *buffer_len)
 {
-	if (par_net_open_req_calc_size(name_size, volume_name_size) > *buffer_len)
+	uint32_t db_name_size = par_net_get_size(name);
+	if (par_net_open_req_calc_size(db_name_size) > *buffer_len)
 		return NULL;
 
-	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + sizeof(uint32_t));
+	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + 2*sizeof(uint32_t));
 	request->flag = flag;
-	request->name_size = name_size;
-	request->volume_name_size = volume_name_size;
-	request->opt_value = opt_value;
+	request->db_name_size = db_name_size;
 
-	memcpy(&buffer[sizeof(uint32_t) + sizeof(struct par_net_open_req)], name, name_size);
-	memcpy(&buffer[sizeof(uint32_t) + sizeof(struct par_net_open_req) + name_size], volume_name, volume_name_size);
+	memcpy(&buffer[2*sizeof(uint32_t) + sizeof(struct par_net_open_req)], name, db_name_size);
 
 	return request;
 }
@@ -61,11 +58,6 @@ char *par_net_open_get_dbname(struct par_net_open_req *request)
 	return (char *)request + sizeof(struct par_net_open_req);
 }
 
-char *par_net_open_get_volname(struct par_net_open_req *request)
-{
-	return (char *)request + sizeof(struct par_net_open_req) + request->name_size;
-}
-
 struct par_net_open_rep *par_net_open_rep_create(int status, par_handle handle, size_t *rep_len)
 {
 	struct par_net_open_rep *reply = malloc(sizeof(struct par_net_open_rep));
@@ -76,8 +68,7 @@ struct par_net_open_rep *par_net_open_rep_create(int status, par_handle handle, 
 	if (status == 1)
 		return reply;
 
-	uint64_t handle_value = (uint64_t)(uintptr_t)handle;
-	reply->region_id = handle_value;
+	reply->region_id = (uint64_t)handle;
 
 	return reply;
 }
@@ -86,12 +77,11 @@ par_handle par_net_open_rep_handle_reply(char *buffer)
 {
 	struct par_net_open_rep *reply = (struct par_net_open_rep *)buffer;
 	if (reply->status == 1) {
-		log_fatal("Server reply fail");
+		log_fatal("Invalid Reply status");
 		_exit(EXIT_FAILURE);
 	}
 
-	uint64_t handle_value = reply->region_id;
-	par_handle handle = (par_handle)(uintptr_t)handle_value;
+	par_handle handle = (par_handle)reply->region_id;
 
 	return handle;
 }

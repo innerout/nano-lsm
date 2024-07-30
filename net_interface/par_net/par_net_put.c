@@ -21,7 +21,7 @@ size_t par_net_put_req_calc_size(uint32_t key_size, uint32_t value_size)
 	return sizeof(struct par_net_put_req) + key_size + value_size;
 }
 
-size_t par_net_put_rep_calc_size()
+size_t par_net_put_rep_calc_size(void)
 {
 	return sizeof(struct par_net_put_rep);
 }
@@ -32,13 +32,16 @@ struct par_net_put_req *par_net_put_req_create(uint64_t region_id, uint32_t key_
 	if (par_net_put_req_calc_size(key_size, value_size) > *buffer_len)
 		return NULL;
 
-	struct par_net_put_req *request = (struct par_net_put_req *)(buffer + sizeof(uint32_t));
+	struct par_net_put_req *request = (struct par_net_put_req *)(buffer + 2*sizeof(uint32_t));
 	request->region_id = region_id;
 	request->key_size = key_size;
 	request->value_size = value_size;
 
-	memcpy(&buffer[sizeof(uint32_t) + sizeof(struct par_net_put_req)], key, key_size);
-	memcpy(&buffer[sizeof(uint32_t) + sizeof(struct par_net_put_req) + key_size], value, value_size);
+	memcpy(&buffer[2*sizeof(uint32_t) + sizeof(struct par_net_put_req)], key, key_size);
+	memcpy(&buffer[2*sizeof(uint32_t) + sizeof(struct par_net_put_req) + key_size], value, value_size);
+   
+  log_debug("Key size %lu",   (unsigned long)key_size);
+  log_debug("Value size %lu", (unsigned long)value_size);
 
 	return request;
 }
@@ -94,7 +97,7 @@ struct par_put_metadata par_net_put_rep_handle_reply(char *buffer)
 	struct par_put_metadata metadata;
 
 	if (reply->status == 1) {
-		log_fatal("Server reply fail");
+		log_fatal("Invalid Reply status");
 		_exit(EXIT_FAILURE);
 	}
 

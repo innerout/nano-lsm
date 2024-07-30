@@ -11,20 +11,10 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "../allocator/kv_format.h"
-#include "../allocator/log_structures.h"
-#include "../allocator/persistent_operations.h"
-#include "../allocator/region_log.h"
-#include "../btree/btree.h"
 #include "../btree/conf.h"
-#include "../btree/key_splice.h"
-#include "../btree/kv_pairs.h"
 #include "../btree/set_options.h"
-#include "../common/common.h"
 #include "../include/parallax/parallax.h"
 #include "../include/parallax/structures.h"
-#include "../lib/allocator/device_structures.h"
-#include "../lib/scanner/scanner_mode.h"
 #include "../net_interface/par_net/par_net.h"
 #include "../net_interface/par_net/par_net_open.h"
 #include "../net_interface/par_net/par_net_put.h"
@@ -47,20 +37,38 @@
 #include <string.h>
 #define PAR_MAX_PREALLOCATED_SIZE 256
 
-char *par_net_send(char *buffer, size_t *buffer_len)
-{
-	int sockfd;
-	struct sockaddr_in server_addr;
+#define INITIAL_NET_BUF_SIZE 1024
 
-	struct msghdr msg = { 0 };
-	struct iovec iov[1];
-	ssize_t bytes_sent, bytes_received;
+size_t net_buffer_size = INITIAL_NET_BUF_SIZE;
 
-	iov[0].iov_base = buffer;
-	iov[0].iov_len = *buffer_len;
+struct par_net_header{
+  uint32_t total_bytes;
+  uint32_t opcode;
+};
 
-	msg.msg_iov = iov;
-	msg.msg_iovlen = 1;
+struct par_net_socket{
+  int sockfd;
+  struct sockaddr_in server_addr;
+};
+
+struct par_net_socket socket_info;
+
+size_t par_net_header_calc_size(void){
+  return sizeof(struct par_net_header); 
+}
+
+void par_net_header_set_total_bytes(char* buffer ,uint32_t total_bytes){
+   memcpy(buffer, &total_bytes, sizeof(uint32_t));
+}
+
+void par_net_header_set_opcode(char* buffer,uint32_t opcode){
+  memcpy(buffer + sizeof(uint32_t), &opcode, sizeof(uint32_t));
+}
+
+void par_net_init(void){
+  //Connects to server
+  int sockfd;
+  struct sockaddr_in server_addr;
 
 	server_addr.sin_family = AF_INET;
 	server_addr.sin_port = htons(8080);
@@ -78,15 +86,49 @@ char *par_net_send(char *buffer, size_t *buffer_len)
 		_exit(EXIT_FAILURE);
 	}
 
-	bytes_sent = sendmsg(sockfd, &msg, 0);
+  socket_info.sockfd = sockfd;
+  socket_info.server_addr = server_addr;
+ 
+  return;
+}
+
+char *par_net_send(char *buffer, size_t *buffer_len)
+{
+	int sockfd = socket_info.sockfd;
+
+	struct msghdr msg = { 0 };
+	struct iovec iov[1];
+	ssize_t bytes_sent,bytes_received;
+
+	iov[0].iov_base = buffer;
+	iov[0].iov_len = *buffer_len;
+
+	msg.msg_iov = iov;
+	msg.msg_iovlen = 1;
+
+  bytes_sent = sendmsg(sockfd, &msg, 0);
 	if (bytes_sent < 0) {
 		perror("TCP_CLIENT_SENDMSG");
 		log_fatal("Sendmsg failed");
 		close(sockfd);
 		_exit(EXIT_FAILURE);
 	}
-	log_info("message sent");
 
+  //Re-transmit if server buffer could not hold message
+  if(*buffer_len > net_buffer_size){
+    net_buffer_size = *buffer_len;
+    bytes_sent = sendmsg(sockfd, &msg, 0);
+    if(bytes_sent < 0){
+      perror("TCP_CLIENT_SENDMSG");
+      log_fatal("Sendmsg failed");
+      close(sockfd);
+      _exit(EXIT_FAILURE);
+    }
+  }
+
+  log_debug("Total Bytes Sent == %lu", bytes_sent);
+
+  /* REPLY FROM SERVER */
 	char *reply_buffer = malloc(1024);
 	struct iovec iov_reply[1];
 	struct msghdr msg_reply = { 0 };
@@ -98,15 +140,13 @@ char *par_net_send(char *buffer, size_t *buffer_len)
 	msg_reply.msg_iov = iov_reply;
 	msg_reply.msg_iovlen = 1;
 
-	bytes_received = recvmsg(sockfd, &msg_reply, 0);
-	if (bytes_received < 0) {
-		perror("TCP_CLIENT_RECVMSG");
-		log_error("Recvmsg failed");
-		close(sockfd);
-		return NULL;
-	}
+  bytes_received = recvmsg(sockfd, &msg_reply, 0);
+  if (bytes_received < 0) {
+        perror("recvmsg");
+        exit(EXIT_FAILURE);
+  }
 
-	close(sockfd);
+  log_info("Reply received (size = %ld)", bytes_received);
 
 	return reply_buffer;
 }
@@ -122,20 +162,23 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 
 par_handle par_open(par_db_options *db_options, const char **error_message)
 {
-	uint32_t name_size = par_net_get_size(db_options->db_name);
-	uint32_t volume_name_size = par_net_get_size(db_options->volume_name);
-	size_t buffer_len = par_net_open_req_calc_size(name_size, volume_name_size);
-	buffer_len += sizeof(uint32_t);
-	char *buffer = malloc(buffer_len);
 
+  par_net_init();
+
+	size_t buffer_len = par_net_open_req_calc_size(par_net_get_size(db_options->db_name)) + par_net_header_calc_size();
+	 
+	char *buffer = malloc(buffer_len);
+  log_debug("total bytes == %lu", buffer_len);
+
+  par_net_header_set_total_bytes(buffer,buffer_len);
+ 
 	uint32_t opcode = OPCODE_OPEN;
-	memcpy(buffer, &opcode, sizeof(uint32_t));
+  par_net_header_set_opcode(buffer,opcode);
 
 	struct par_net_open_req *request =
-		par_net_open_req_create(db_options->create_flag, name_size, db_options->db_name, volume_name_size,
-					db_options->volume_name, db_options->options->value, buffer, &buffer_len);
+		par_net_open_req_create(db_options->create_flag, db_options->db_name, buffer, &buffer_len);
 
-	char *serialized_buffer = (char *)request - sizeof(uint32_t);
+	char *serialized_buffer = (char *)request - par_net_header_calc_size();
 
 	char *reply_buffer = par_net_send(serialized_buffer, &buffer_len);
 
@@ -150,22 +193,25 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 		return NULL;
 	}
 
+  log_debug("region_id == %lu", (uint64_t)handle);
+  log_info("PAR_OPEN SUCCESSFUL");
 	return handle;
 }
 
 const char *par_close(par_handle handle)
 {
-	size_t buffer_len = par_net_close_req_calc_size();
-	buffer_len += sizeof(uint32_t);
+	size_t buffer_len = par_net_close_req_calc_size() + par_net_header_calc_size();
 	char *buffer = malloc(buffer_len);
 
-	uint32_t opcode = OPCODE_CLOSE;
-	memcpy(buffer, &opcode, sizeof(uint32_t));
+  par_net_header_set_total_bytes(buffer,buffer_len);
+	
+  uint32_t opcode = OPCODE_CLOSE;
+	par_net_header_set_opcode(buffer,opcode);
 
 	uint64_t region_id = (uint64_t)(uintptr_t)handle;
 	struct par_net_close_req *request = par_net_close_req_create(region_id, buffer, &buffer_len);
 
-	char *serialized_buffer = (char *)request - sizeof(uint32_t);
+	char *serialized_buffer = (char *)request - par_net_header_calc_size();
 
 	char *reply_buffer = par_net_send(serialized_buffer, &buffer_len);
 
@@ -205,19 +251,22 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 {
 	struct par_put_metadata sample_return_value = { 0 };
 
-	size_t buffer_len = par_net_put_req_calc_size(key_value->k.size, key_value->v.val_size);
-	buffer_len += sizeof(uint32_t);
+	size_t buffer_len = par_net_put_req_calc_size(key_value->k.size, key_value->v.val_size) + par_net_header_calc_size();
+  char *buffer = malloc(buffer_len);
 
-	char *buffer = malloc(buffer_len);
+  par_net_header_set_total_bytes(buffer, buffer_len); 
+	
+  uint32_t opcode = OPCODE_PUT;
+	par_net_header_set_opcode(buffer, opcode);
 
-	uint32_t opcode = OPCODE_PUT;
-	memcpy(buffer, &opcode, sizeof(uint32_t));
+  log_debug("Strlen of value == %lu", strlen(key_value->v.val_buffer));
+  log_debug("Value == %s", key_value->v.val_buffer);
 
-	struct par_net_put_req *request = par_net_put_req_create((uint64_t)(uintptr_t)handle, key_value->k.size,
+  struct par_net_put_req *request = par_net_put_req_create((uint64_t)handle, key_value->k.size,
 								 key_value->k.data, key_value->v.val_size,
 								 key_value->v.val_buffer, buffer, &buffer_len);
 
-	char *serialized_buffer = (char *)request - sizeof(uint32_t);
+	char *serialized_buffer = (char *)request - par_net_header_calc_size();
 
 	char *reply_buffer = par_net_send(serialized_buffer, &buffer_len);
 
@@ -227,7 +276,9 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 	}
 
 	struct par_put_metadata metadata = par_net_put_rep_handle_reply(reply_buffer);
-	return metadata;
+  
+  log_info("PAR_PUT SUCCESSFUL");
+  return metadata;
 }
 
 struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_key_value, const char **error_message,
@@ -247,19 +298,20 @@ struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_k
 // cppcheck-suppress constParameterPointer
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
 {
-	size_t buffer_len = par_net_put_req_calc_size(key->size, value->val_size);
-	buffer_len += sizeof(uint32_t);
-
+  
+	size_t buffer_len = par_net_put_req_calc_size(key->size, value->val_size) + par_net_header_calc_size();
 	char *buffer = malloc(buffer_len);
 
-	uint32_t opcode = OPCODE_GET;
-	memcpy(buffer, &opcode, sizeof(uint32_t));
+  par_net_header_set_total_bytes(buffer, buffer_len);
+  
+  uint32_t opcode = OPCODE_GET;
+  par_net_header_set_opcode(buffer,opcode);
 
-	struct par_net_get_req *request = par_net_get_req_create((uint64_t)(uintptr_t)handle, key->size, key->data,
+	struct par_net_get_req *request = par_net_get_req_create((uint64_t)handle, key->size, key->data,
 								 value->val_size, value->val_buffer, buffer,
 								 &buffer_len);
 
-	char *serialized_buffer = (char *)request - sizeof(uint32_t);
+	char *serialized_buffer = (char *)request - par_net_header_calc_size();
 
 	char *reply_buffer = par_net_send(serialized_buffer, &buffer_len);
 	if (!reply_buffer) {
@@ -317,17 +369,18 @@ uint64_t par_init_compaction_id(par_handle handle)
 // cppcheck-suppress constParameterPointer
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)
 {
-	size_t buffer_len = par_net_del_req_calc_size(key->size);
-	buffer_len += sizeof(uint32_t);
+	size_t buffer_len = par_net_del_req_calc_size(key->size) + par_net_header_calc_size();
 	char *buffer = malloc(buffer_len);
 
-	uint32_t opcode = OPCODE_DEL;
-	memcpy(buffer, &opcode, sizeof(uint32_t));
+  par_net_header_set_total_bytes(buffer, buffer_len);
+  
+  uint32_t opcode = OPCODE_DEL;
+	par_net_header_set_opcode(buffer, opcode);
 
 	struct par_net_del_req *request =
 		par_net_del_req_create((uint64_t)(uintptr_t)handle, key->size, key->data, buffer, &buffer_len);
 
-	char *serialized_buffer = (char *)request - sizeof(uint32_t);
+	char *serialized_buffer = (char *)request - 2*sizeof(uint32_t);
 
 	char *reply_buffer = par_net_send(serialized_buffer, &buffer_len);
 
@@ -451,7 +504,7 @@ struct par_options_desc *par_get_default_options(void)
 	uint64_t primary_mode = option->value.count;
 
 	check_option(dboptions, "replica_mode", &option);
-	uint64_t replica_mode = option->value.count;
+	uint64_t replica_mode = 0;
 
 	check_option(dboptions, "replica_build_index", &option);
 	uint64_t replica_build_index = option->value.count;

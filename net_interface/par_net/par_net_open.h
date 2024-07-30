@@ -33,7 +33,7 @@ uint32_t par_net_get_size(const char *buffer);
   * @return Total size of struct, name and volume name
   *
   */
-size_t par_net_open_req_calc_size(uint32_t name_size, uint32_t volume_name_size);
+size_t par_net_open_req_calc_size(uint32_t name_size);
 
 /**
   *
@@ -52,9 +52,8 @@ size_t par_net_open_req_calc_size(uint32_t name_size, uint32_t volume_name_size)
   * @return An object of the response struct on success and NULL on failure
   *
   */
-struct par_net_open_req *par_net_open_req_create(uint8_t flag, uint32_t name_size, const char *name,
-						 uint32_t volume_name_size, const char *volume_name, uint64_t opt_value,
-						 char *buffer, size_t *buffer_len);
+struct par_net_open_req *par_net_open_req_create(uint8_t flag,const char *name,
+												 char *buffer, size_t *buffer_len);
 
 /**
  * @brief Calls par_open from the server side using the parallax public API

@@ -9,7 +9,7 @@ struct par_net_close_rep {
     uint32_t string_size;
 }__attribute__((packed));
 
-uint32_t par_net_close_req_calc_size(){
+uint32_t par_net_close_req_calc_size(void){
     return sizeof(struct par_net_close_req);
 }
 
@@ -21,7 +21,7 @@ struct par_net_close_req *par_net_close_req_create(uint64_t region_id, char *buf
     if(par_net_close_req_calc_size() > *buffer_len)
         return NULL;
 
-    struct par_net_close_req *request = (struct par_net_close_req*)(buffer + sizeof(uint32_t));
+    struct par_net_close_req *request = (struct par_net_close_req*)(buffer + 2*sizeof(uint32_t));
     request->region_id = region_id;
 
     return request;
@@ -54,10 +54,11 @@ const char* par_net_close_get_string(struct par_net_close_rep *reply){
 const char* par_net_close_rep_handle_reply(char* buffer){
     struct par_net_close_rep *reply = (struct par_net_close_rep*)buffer;
     if(reply->status == 1){
-        log_fatal("Server reply fail");
+        log_fatal("Invalid reply status");
         _exit(EXIT_FAILURE);
     }
 
     const char* return_string = par_net_close_get_string(reply);
     return return_string;
 }
+

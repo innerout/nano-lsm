@@ -44,7 +44,7 @@ extern par_call par_net_call[6];
   *  @return the uint8_t opcode
   *
   */
-uint32_t par_find_opcode(char *buffer);
+uint32_t par_net_header_get_opcode(char *buffer);
 
 /**
   *  @brief Sends buffer to the server
