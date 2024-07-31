@@ -9,6 +9,25 @@ project(
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Define options for KV_MAX_SIZE
+option(KV_MAX_SIZE_32K "Set KV_MAX_SIZE to 32K" OFF)
+option(KV_MAX_SIZE_64K "Set KV_MAX_SIZE to 64K" OFF)
+option(KV_MAX_SIZE_128K "Set KV_MAX_SIZE to 128K" OFF)
+
+# Set default value for KV_MAX_SIZE
+set(KV_MAX_SIZE 16384)
+
+# Update KV_MAX_SIZE based on options
+if(KV_MAX_SIZE_32K)
+  set(KV_MAX_SIZE 32768)
+elseif(KV_MAX_SIZE_64K)
+  set(KV_MAX_SIZE 65536)
+elseif(KV_MAX_SIZE_128K)
+  set(KV_MAX_SIZE 131072)
+endif()
+# Add definition for KV_MAX_SIZE
+add_definitions(-DKV_MAX_SIZE=${KV_MAX_SIZE})
+
 if(NOT DEFINED ALIGNMENT_SIZE)
   set(ALIGNMENT_SIZE "512UL") # Set without UL suffix if not defined
 else()

@@ -62,7 +62,11 @@
 #define LOG_TAIL_NUM_BUFS (4)
 #define MAX_ALLOCATION_TRIES (2)
 #define MAX_HEIGHT 9
+
+#ifndef KV_MAX_SIZE
 #define KV_MAX_SIZE 16384 //(4096 + 8)
+#endif
+
 #define LEVEL_ENTRY_POINTS 16
 #define COMPACTION_STATS 0
 #define MAX_ERROR_MESSAGE_SIZE 2048
