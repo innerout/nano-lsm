@@ -21,7 +21,7 @@ struct par_net_close_req *par_net_close_req_create(uint64_t region_id, char *buf
 
 uint64_t par_net_close_get_region_id(struct par_net_close_req *request);
 
-char* par_net_call_close(char *buffer, size_t *buffer_len);
+char* par_net_call_close(char *buffer, size_t *buffer_len, void* args);
 
 struct par_net_close_rep *par_net_close_rep_create(int status, const char* return_string, size_t *rep_len);
 

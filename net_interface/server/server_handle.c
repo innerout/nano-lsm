@@ -1,3 +1,4 @@
+#include "btree/conf.h"
 #define _GNU_SOURCE
 #include "../par_net/par_net.h"
 #include "server_handle.h"
@@ -24,6 +25,7 @@
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 #ifdef SSL
 #include "../common/common_ssl/mbedtls_utility.h"
@@ -89,7 +91,13 @@
 	"  - file = %s\n"       \
 	"  - flags = not yet supported\n"
 
-#define INITIAL_NET_BUF_SIZE 1024
+struct par_net_header{
+  uint32_t total_bytes;
+  uint32_t opcode;
+}; 
+
+
+#define INITIAL_NET_BUF_SIZE sizeof(struct par_net_header)
 
 /** server argv[] options **/
 
@@ -122,6 +130,9 @@ struct worker {
 
   char* recv_buffer;
   size_t recv_buffer_size;
+
+  char* par_get_buffer;
+  size_t par_get_buffer_size;
 };
 
 #ifdef SSL
@@ -207,7 +218,7 @@ static int __handle_new_connection(struct worker *this) __attribute__((nonnull))
  */
 static void *__handle_events(void *arg) __attribute__((nonnull));
 
-static int __par_handle_req(struct worker *restrict this, int client_sock, struct tcp_req *restrict req)
+static int __par_handle_req(struct worker *restrict worker, int client_sock, struct tcp_req *restrict req)
 	__attribute__((nonnull));
 
 /**
@@ -870,8 +881,10 @@ static void *__handle_events(void *arg)
 
 	struct epoll_event rearm_event = { .events = EPOLLIN | EPOLLRDHUP | EPOLLONESHOT };
 	struct epoll_event epoll_events[EPOLL_MAX_EVENTS];
-  this->recv_buffer = malloc(INITIAL_NET_BUF_SIZE);
+  this->recv_buffer = calloc(1UL,INITIAL_NET_BUF_SIZE);
   this->recv_buffer_size = INITIAL_NET_BUF_SIZE;
+  this->par_get_buffer = calloc(1UL, KV_MAX_SIZE);
+  this->par_get_buffer_size = KV_MAX_SIZE;
 	// pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 	// push cleanup function (like at_exit())
 
@@ -884,6 +897,8 @@ static void *__handle_events(void *arg)
 		continue;
 	}
 
+  this->par_get_buffer_size = KV_MAX_SIZE;
+  this->par_get_buffer_size = KV_MAX_SIZE;
 	event_loop_start(evindex, events);
 
 	client_sock = epoll_events[evindex].data.fd;
@@ -967,10 +982,10 @@ static void *__handle_events(void *arg)
 	__builtin_unreachable();
 }
 
-struct par_net_header{
-  uint32_t total_bytes;
-  uint32_t opcode;
-}; 
+struct par_net_arg{
+  char* get_buffer;
+  uint32_t get_buffer_size;
+};
 
 size_t par_net_header_calc_size(void){
   return sizeof(struct par_net_header);
@@ -995,10 +1010,15 @@ static size_t par_net_get_total_bytes(char* buffer){
 
 par_call par_net_call[6] = { NULL, par_net_call_open, par_net_call_put, par_net_call_del, par_net_call_get, par_net_call_close };
 
+typedef enum{
+  KEY_NOT_FOUND = 0,
+  KEY_FOUND
+}is_key_found;
 
-char *par_net_call_open(char *buffer, size_t *buffer_len)
+char *par_net_call_open(char *buffer, size_t *buffer_len, void* args)
 {
- log_info("Calling par_open");
+  (void)args; 
+  log_debug("Calling par_open");
 	struct par_net_open_rep *reply;
 	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + par_net_header_calc_size());
 
@@ -1010,7 +1030,8 @@ char *par_net_call_open(char *buffer, size_t *buffer_len)
   db_options.volume_name ="/home/tasath/junk.data";
 
  	const char *error_message = NULL;
-	par_handle handle = par_open(&db_options, &error_message);
+	log_debug("db name is == %s", db_options.db_name);
+  par_handle handle = par_open(&db_options, &error_message);
 
 	if (error_message) {
 		log_fatal("%s", error_message);
@@ -1023,9 +1044,10 @@ char *par_net_call_open(char *buffer, size_t *buffer_len)
 	return (char *)reply;
 }
 
-char *par_net_call_put(char *buffer, size_t *buffer_len)
+char *par_net_call_put(char *buffer, size_t *buffer_len, void* args)
 {
- log_info("Calling par_put");
+  (void)args;
+  log_debug("Calling par_put");
 	struct par_net_put_rep *reply;
 	struct par_net_put_req *request = (struct par_net_put_req *)(buffer + par_net_header_calc_size());
 
@@ -1054,11 +1076,12 @@ char *par_net_call_put(char *buffer, size_t *buffer_len)
 	return (char *)reply;
 }
 
-char *par_net_call_del(char *buffer, size_t *buffer_len)
+char *par_net_call_del(char *buffer, size_t *buffer_len, void* args)
 {
+  (void)args;
   log_info("Calling par_delete");
 	struct par_net_del_rep *reply;
-	struct par_net_del_req *request = (struct par_net_del_req *)(buffer + par_net_header_calc_size());
+	struct par_net_del_req *request = (struct par_net_del_req *)(&buffer[par_net_header_calc_size()]);
 
   struct par_key key = { 0 };
 	uint64_t region_id = par_net_del_get_region_id(request);
@@ -1078,40 +1101,43 @@ char *par_net_call_del(char *buffer, size_t *buffer_len)
 	return (char *)reply;
 }
 
-char *par_net_call_get(char *buffer, size_t *buffer_len)
+char *par_net_call_get(char *buffer, size_t *buffer_len, void* args)
 {
-   log_info("Calling par_get");
+  log_debug("Calling par_get");
 	struct par_net_get_rep *reply;
 	struct par_net_get_req *request = (struct par_net_get_req *)(buffer + par_net_header_calc_size());
 
-	struct par_key k;
-	struct par_value v;
-
 	uint64_t region_id = par_net_get_get_region_id(request);
-	k.size = par_net_get_get_key_size(request);
-	v.val_size = par_net_get_get_value_size(request);
+	struct par_key k;
+  k.size = par_net_get_get_key_size(request);
 	k.data = par_net_get_get_key(request);
-	v.val_buffer = par_net_get_get_value(request);
-  v.val_buffer_size = par_net_get_get_value_size(request);
+  
+  struct par_value v;
+  struct par_net_arg *params = (struct par_net_arg *)args;
+  v.val_buffer = params->get_buffer;
+  v.val_size = params->get_buffer_size;
+  v.val_buffer_size = v.val_size;
 
   log_debug("key size == %lu", (unsigned long)k.size);
-  log_debug("val size == %lu", (unsigned long)v.val_size);
   const char *error_message = NULL;
 	par_get((par_handle)region_id, &k, &v, &error_message);
+  log_debug("Value size == %lu", (unsigned long)v.val_size);
 
 	if (error_message) {
-		log_fatal("%s", error_message);
-		reply = par_net_get_rep_create(1, buffer_len);
+		log_debug("%s", error_message);
+		reply = par_net_get_rep_create(KEY_NOT_FOUND,&v, buffer_len);
 		return (char *)reply;
 	}
 
-	reply = par_net_get_rep_create(0, buffer_len);
+	reply = par_net_get_rep_create(KEY_FOUND, &v, buffer_len);
 	return (char *)reply;
 }
 
-char* par_net_call_close(char* buffer, size_t *buffer_len)
+char* par_net_call_close(char* buffer, size_t *buffer_len, void* args)
 {
-   log_info("Calling par_close");
+  
+  (void)args;
+  log_debug("Calling par_close");
 	struct par_net_close_rep *reply;
 	struct par_net_close_req *request = (struct par_net_close_req *)(buffer + par_net_header_calc_size());
 
@@ -1131,63 +1157,72 @@ char* par_net_call_close(char* buffer, size_t *buffer_len)
 	
 }
 
-static int __par_handle_req(struct worker *restrict this, int client_sock, struct tcp_req *restrict req)
+static int __par_handle_req(struct worker *restrict worker, int client_sock, struct tcp_req *restrict req)
 {
-  char* buffer = this->recv_buffer;
-  size_t recv_buffer_size = this->recv_buffer_size;	
-
   (void)req;
   
 	struct iovec iov[1];
 	struct msghdr msg;
 
-	iov[0].iov_base = buffer;
-	iov[0].iov_len = recv_buffer_size;
+	iov[0].iov_base = worker->recv_buffer;
+	iov[0].iov_len = worker->recv_buffer_size;
 
 	memset(&msg, 0, sizeof(msg));
 	msg.msg_iov = iov;
 	msg.msg_iovlen = 1;
   msg.msg_flags = 0;
 
+  log_debug("Begin receive message");
   ssize_t bytes_received = recvmsg(client_sock, &msg, 0);
   if (bytes_received < 0) {
         perror("recvmsg");
         _exit(EXIT_FAILURE);
   }
 
-  size_t total_bytes = par_net_get_total_bytes(buffer);
+  size_t total_bytes = par_net_get_total_bytes(worker->recv_buffer);
 
-  if(total_bytes > recv_buffer_size){
-    recv_buffer_size = total_bytes;
-    buffer = (char*)realloc(buffer, recv_buffer_size);
+  if(total_bytes > worker->recv_buffer_size){
+    log_debug("Handling Larger message");
+    worker->recv_buffer_size = total_bytes;
+    worker->recv_buffer = (char*)realloc(worker->recv_buffer, worker->recv_buffer_size);
+    worker->recv_buffer_size = worker->recv_buffer_size;
 
-    this->recv_buffer = buffer;
-    this->recv_buffer_size = recv_buffer_size; 
-      
-    iov[0].iov_base = buffer;
-    iov[0].iov_len = recv_buffer_size;
+    iov[0].iov_base = &worker->recv_buffer[bytes_received];
+    iov[0].iov_len = worker->recv_buffer_size - bytes_received;
 
-    bytes_received = recvmsg(client_sock, &msg, 0);
-    if (bytes_received < 0) {
+    ssize_t extra_bytes_received = recvmsg(client_sock, &msg, 0);
+    if (extra_bytes_received < 0) {
         perror("recvmsg");
         _exit(EXIT_FAILURE);
     }
+
+    log_debug("extra bytes received == %lu", extra_bytes_received);
+    bytes_received += extra_bytes_received;
   }
 
-  if(total_bytes != (unsigned)bytes_received){
-    return EXIT_FAILURE; 
+  log_debug("total_bytes == %lu", total_bytes);
+  log_debug("bytes received == %lu", (unsigned long)bytes_received);
+  if(total_bytes != (size_t)bytes_received){
+    log_fatal("Bytes not transmitted");
+    _exit(EXIT_FAILURE); 
   }
 
-  log_debug("Total bytes received == %ld", bytes_received);
-	uint32_t opcode = par_net_header_get_opcode(buffer);
+  log_debug("Total message size == %ld", bytes_received);
+	uint32_t opcode = par_net_header_get_opcode(worker->recv_buffer);
 
   if (opcode == 0){
 		log_fatal("invalid opcode");
     return EXIT_FAILURE;
   }
 
+  struct par_net_arg args = {0};
+  if(opcode == OPCODE_GET){
+    args.get_buffer = worker->par_get_buffer;
+    args.get_buffer_size = worker->par_get_buffer_size;
+  }
+
 	size_t rep_buffer_len = 0;
-	char *reply = par_net_call[opcode](buffer, &rep_buffer_len);
+	char *reply = par_net_call[opcode](worker->recv_buffer, &rep_buffer_len, &args);
   
 	struct iovec iov_reply[1];
 	struct msghdr msg_reply = { 0 };

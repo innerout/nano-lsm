@@ -1,4 +1,5 @@
 #include "par_net_close.h"
+#include "par_net.h"
 
 struct par_net_close_req {
     uint64_t region_id;
@@ -21,7 +22,7 @@ struct par_net_close_req *par_net_close_req_create(uint64_t region_id, char *buf
     if(par_net_close_req_calc_size() > *buffer_len)
         return NULL;
 
-    struct par_net_close_req *request = (struct par_net_close_req*)(buffer + 2*sizeof(uint32_t));
+    struct par_net_close_req *request = (struct par_net_close_req*)(&buffer[par_net_header_calc_size()]);
     request->region_id = region_id;
 
     return request;

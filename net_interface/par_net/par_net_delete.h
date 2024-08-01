@@ -51,7 +51,7 @@ struct par_net_del_req *par_net_del_req_create(uint64_t region_id, uint32_t key_
   *
   */
 
-char *par_net_call_del(char *buffer, size_t *buffer_len);
+char *par_net_call_del(char *buffer, size_t *buffer_len, void* args);
 
 /**
  * @brief getter for region_id

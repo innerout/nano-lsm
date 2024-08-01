@@ -1,5 +1,5 @@
 #include "par_net_open.h"
-#include "log.h"
+#include "par_net.h"
 
 struct par_net_open_req {
 	uint64_t opt_value;
@@ -34,11 +34,11 @@ struct par_net_open_req *par_net_open_req_create(uint8_t flag, const char *name,
 	if (par_net_open_req_calc_size(db_name_size) > *buffer_len)
 		return NULL;
 
-	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + 2*sizeof(uint32_t));
+	struct par_net_open_req *request = (struct par_net_open_req *)(&buffer[par_net_header_calc_size()]);
 	request->flag = flag;
 	request->db_name_size = db_name_size;
 
-	memcpy(&buffer[2*sizeof(uint32_t) + sizeof(struct par_net_open_req)], name, db_name_size);
+	memcpy(&buffer[par_net_header_calc_size() + sizeof(struct par_net_open_req)], name, db_name_size);
 
 	return request;
 }

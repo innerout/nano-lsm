@@ -37,7 +37,7 @@ struct par_net_put_req *par_net_put_req_create(uint64_t region_id, uint32_t key_
 
 struct par_net_put_req *par_net_put_destroy(struct par_net_put_req *request);
 
-char *par_net_call_put(char *buffer, size_t *buffer_len);
+char *par_net_call_put(char *buffer, size_t *buffer_len, void* args);
 
 /**
  * @brief getter for region_id

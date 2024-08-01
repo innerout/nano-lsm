@@ -1,40 +1,39 @@
 #include "par_net_get.h"
 #include "log.h"
+#include "par_net.h"
+#include <stdint.h>
 
 struct par_net_get_req {
 	uint64_t region_id;
 	uint32_t key_size;
-	uint32_t value_size;
 } __attribute__((packed));
 
 struct par_net_get_rep {
-	uint32_t status;
+	uint32_t is_found;
+  uint32_t value_size;
 } __attribute__((packed));
 
-size_t par_net_get_req_calc_size(uint32_t key_size, uint32_t value_size)
+size_t par_net_get_req_calc_size(uint32_t key_size)
 {
-	return sizeof(struct par_net_get_req) + key_size + value_size;
+	return sizeof(struct par_net_get_req) + key_size;
 }
 
-size_t par_net_get_rep_calc_size(void)
+size_t par_net_get_rep_calc_size(uint32_t value_size)
 {
-	return sizeof(struct par_net_get_rep);
+	return sizeof(struct par_net_get_rep) + value_size;
 }
 
 struct par_net_get_req *par_net_get_req_create(uint64_t region_id, uint32_t key_size, const char *key,
-					       uint32_t value_size, const char *value, char *buffer, size_t *buffer_len)
+					        char *buffer, size_t *buffer_len)
 {
-	if (par_net_get_req_calc_size(key_size, value_size) > *buffer_len)
+	if (par_net_get_req_calc_size(key_size) > *buffer_len)
 		return NULL;
 
-	struct par_net_get_req *request = (struct par_net_get_req *)(buffer + 2*sizeof(uint32_t));
+	struct par_net_get_req *request = (struct par_net_get_req *)(&buffer[par_net_header_calc_size()]);
 	request->region_id = region_id;
 	request->key_size = key_size;
-	request->value_size = value_size;
 
-	memcpy(&buffer[2*sizeof(uint32_t) + sizeof(struct par_net_get_req)], key, key_size);
-	memcpy(&buffer[2*sizeof(uint32_t) + sizeof(struct par_net_get_req) + key_size], value, value_size);
-
+	memcpy(&buffer[par_net_header_calc_size() + sizeof(struct par_net_get_req)], key, key_size);
 	return request;
 }
 
@@ -48,38 +47,43 @@ uint32_t par_net_get_get_key_size(struct par_net_get_req *request)
 	return request->key_size;
 }
 
-uint32_t par_net_get_get_value_size(struct par_net_get_req *request)
-{
-	return request->value_size;
-}
-
 char *par_net_get_get_key(struct par_net_get_req *request)
 {
 	return (char *)request + sizeof(struct par_net_get_req);
 }
 
-char *par_net_get_get_value(struct par_net_get_req *request)
+struct par_net_get_rep *par_net_get_rep_create(int is_found,struct par_value *v,size_t *rep_len)
 {
-	return (char *)request + sizeof(struct par_net_get_req) + request->key_size;
-}
 
-struct par_net_get_rep *par_net_get_rep_create(int status, size_t *rep_len)
-{
-	struct par_net_get_rep *reply = malloc(sizeof(struct par_net_get_rep));
-	*rep_len = par_net_get_rep_calc_size();
+  *rep_len = par_net_get_rep_calc_size(v->val_size);
+  struct par_net_get_rep *reply = malloc(*rep_len);
 
-	reply->status = status;
+	reply->is_found = is_found;
+  if(!is_found)
+    return reply;
+
+  char* reply_buffer = (char*)reply;
+  log_debug("Val size (creating rep object) == %lu", (unsigned long)v->val_size);
+  reply->value_size = v->val_size;
+  memcpy(&reply_buffer[sizeof(struct par_net_get_rep)], v->val_buffer, v->val_size);
+
 	return reply;
 }
 
-void par_net_get_rep_handle_reply(char *buffer)
+int par_net_get_rep_handle_reply(char *buffer ,struct par_value *v)
 {
 	struct par_net_get_rep *reply = (struct par_net_get_rep *)buffer;
 
-	if (reply->status == 1) {
-		log_fatal("Invalid reply status");
-		_exit(EXIT_FAILURE);
+	if (!reply->is_found) {	
+    return 1;
 	}
 
-	return;
+  v->val_size = reply->value_size;
+  v->val_buffer_size = reply->value_size;
+ 
+  log_debug("val size == %lu", (unsigned long)reply->value_size);
+  v->val_buffer = calloc(1UL, v->val_size);
+
+  memcpy(v->val_buffer, &buffer[sizeof(struct par_net_get_rep)], v->val_size);
+	return 0;
 }

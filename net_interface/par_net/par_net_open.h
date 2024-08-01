@@ -64,7 +64,7 @@ struct par_net_open_req *par_net_open_req_create(uint8_t flag,const char *name,
  * @return A buffer containing the server's reply
  *
 */
-char *par_net_call_open(char *buffer, size_t *buffer_len);
+char *par_net_call_open(char *buffer, size_t *buffer_len, void* args);
 
 /**
  * @brief getter for options->value

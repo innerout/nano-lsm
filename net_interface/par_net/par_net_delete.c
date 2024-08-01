@@ -1,4 +1,5 @@
 #include "par_net_delete.h"
+#include "par_net.h"
 
 struct par_net_del_req {
 	uint64_t region_id;
@@ -25,11 +26,11 @@ struct par_net_del_req *par_net_del_req_create(uint64_t region_id, uint32_t key_
 	if (par_net_del_req_calc_size(key_size) > *buffer_len)
 		return NULL;
 
-	struct par_net_del_req *request = (struct par_net_del_req *)(buffer + 2*sizeof(uint32_t));
+	struct par_net_del_req *request = (struct par_net_del_req *)(&buffer[par_net_header_calc_size()]);
 	request->key_size = key_size;
 	request->region_id = region_id;
 
-	memcpy(&buffer[2*sizeof(uint32_t) + sizeof(struct par_net_del_req)], key, key_size);
+	memcpy(&buffer[par_net_header_calc_size() + sizeof(struct par_net_del_req)], key, key_size);
 
 	return request;
 }
