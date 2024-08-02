@@ -1,7 +1,5 @@
 #include "par_net_get.h"
-#include "log.h"
 #include "par_net.h"
-#include <stdint.h>
 
 struct par_net_get_req {
 	uint64_t region_id;

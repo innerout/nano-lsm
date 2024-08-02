@@ -16,10 +16,32 @@ struct par_net_get_rep;
 
 size_t par_net_get_req_calc_size(uint32_t key_size);
 
+/**
+  * @brief Constructor for the par_net_put class, initializes values to be
+  * ready for serialization
+  *
+  * @param region_id
+  * @param key_size
+  * @param key
+  * @param buffer
+  * @param buffer_len
+  *
+  * @return An object of the response struct on success and NULL on failure
+  *
+  */
 struct par_net_get_req *par_net_get_req_create(uint64_t region_id, uint32_t key_size, const char *key,
 					       char *buffer,
 					       size_t *buffer_len);
 
+/**
+  * @brief Calls par_get from the server side using the parallax public API
+  *
+  * @param buffer
+  * @param buffer_len
+  * @param args
+  *
+  * @return A buffer containing the server's reply 
+  */ 
 char *par_net_call_get(char *buffer, size_t *buffer_len, void* args);
 
 /**

@@ -1,6 +1,5 @@
 #include "par_net_put.h"
 #include "par_net.h"
-#include <stdint.h>
 
 struct par_net_put_req {
 	uint64_t region_id;

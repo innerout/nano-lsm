@@ -41,11 +41,7 @@ size_t par_net_open_req_calc_size(uint32_t name_size);
   * ready for serialization
   *
   * @param flag
-  * @param name_size
-  * @param name
-  * @param volume_name_size
-  * @param volume_name
-  * @param opt_value
+  * @param name 
   * @param buffer
   * @param buffer_len
   *
@@ -60,6 +56,7 @@ struct par_net_open_req *par_net_open_req_create(uint8_t flag,const char *name,
  *
  * @param buffer
  * @param buffer_len
+ * @param args
  *
  * @return A buffer containing the server's reply
  *

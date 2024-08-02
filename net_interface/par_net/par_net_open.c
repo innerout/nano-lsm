@@ -1,5 +1,4 @@
 #include "par_net_open.h"
-#include "log.h"
 #include "par_net.h"
 
 struct par_net_open_req {

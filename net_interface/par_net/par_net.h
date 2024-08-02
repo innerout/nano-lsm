@@ -22,21 +22,11 @@
 
 #define MAX_OPCODE 6
 
-#if __BIG_ENDIAN__
-#define htonl_64(x) (x)
-#define ntohl_64(x) (x)
-#else
-#define htonl_64(x) (((uint64_t)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
-#define ntohl_64(x) (((uint64_t)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
-#endif
-
 enum par_net_op { OPCODE_OPEN = 1, OPCODE_PUT, OPCODE_DEL, OPCODE_GET, OPCODE_CLOSE };
 
 typedef char *(*par_call)(char *buffer, size_t *buffer_len, void* args);
 
 extern par_call par_net_call[MAX_OPCODE];
-
-struct par_net_header;
 
 /**
   *  @brief Takes the first byte of the serialized stream and translates it to
@@ -48,9 +38,6 @@ struct par_net_header;
   *
   */
 uint32_t par_net_header_get_opcode(char *buffer);
-
-
-size_t par_net_header_calc_size(void);
 
 /**
   *  @brief Sends buffer to the server

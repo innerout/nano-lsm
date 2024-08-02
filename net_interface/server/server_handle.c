@@ -993,19 +993,18 @@ size_t par_net_header_calc_size(void){
 
 uint32_t par_net_header_get_opcode(char *buffer)
 {
-	uint32_t opcode;
-	memcpy(&opcode, buffer + sizeof(uint32_t), sizeof(uint32_t));
-
-	if (opcode >= MAX_OPCODE)
+  struct par_net_header* header = (struct par_net_header*)buffer;
+  
+  if (header->opcode >= MAX_OPCODE)
 		return 0;
  
-	return opcode;
+	return header->opcode;
 }
 
-static size_t par_net_get_total_bytes(char* buffer){
-  uint32_t total_bytes;
-  memcpy(&total_bytes, buffer, sizeof(uint32_t));
-  return total_bytes;
+static size_t par_net_get_total_bytes(char* buffer)
+{
+  struct par_net_header* header = (struct par_net_header*)buffer;
+  return header->total_bytes;
 } 
 
 par_call par_net_call[6] = { NULL, par_net_call_open, par_net_call_put, par_net_call_del, par_net_call_get, par_net_call_close };
@@ -1229,13 +1228,12 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
 		log_debug("Remote side has probably closed the socket");
     if(close(client_sock) < 0){
       log_debug("Could not close client socket");
+      free(reply);
       return EXIT_FAILURE;
-    }
-
-		return EXIT_SUCCESS;
+    }  
 	}
 
-  log_info("Reply sent successfully");
+  free(reply);
 	return EXIT_SUCCESS;
 }
 

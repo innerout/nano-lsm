@@ -87,6 +87,11 @@ static par_handle par_net_init(void)
   return (par_handle)handle;
 }
 
+void par_net_handle_destroy(par_handle close_handle){
+  struct par_handle *handle = (struct par_handle*)close_handle;
+  free(handle->recv_buffer);
+}
+
 char *par_net_RPC(par_handle handle,char *buffer, size_t *buffer_len)
 {
   struct par_handle* client_handle = (struct par_handle*)handle;
@@ -139,7 +144,7 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 	(void)device_name;
 	(void)max_regions_num;
 
-  log_warn("Not supported function for the TCP client");
+  log_warn("par format not supported for the TCP client");
 	return NULL;
 }
 
@@ -201,12 +206,13 @@ const char *par_close(par_handle handle)
 	
 	const char *error_message = par_net_close_rep_handle_reply(reply_buffer);
 
-	if(error_message)
+	if(error_message){
 		return error_message;
+  }
 
+  par_net_handle_destroy(close_handle);
 	return NULL;
-
-}
+ }
 
 // cppcheck-suppress unusedFunction
 char *par_get_db_name(par_handle handle, const char **error_message)
@@ -456,10 +462,6 @@ par_ret_code par_sync(par_handle handle)
 	return ret_val;
 }
 
-/**
- * Create, populate and return a buffer containing the default db_options values from option.yml file. Callers can modify the buffer at will.
- * @retval Array with NUM_OF_OPTIONS sizeo of struct options_desc
- */
 struct par_options_desc *par_get_default_options(void)
 {
 	struct par_options_desc *default_db_options =
