@@ -11,6 +11,7 @@ struct par_net_get_req {
 struct par_net_get_rep {
 	uint32_t is_found;
   uint32_t value_size;
+  uint32_t total_bytes;
 } __attribute__((packed));
 
 size_t par_net_get_req_calc_size(uint32_t key_size)
@@ -29,11 +30,11 @@ struct par_net_get_req *par_net_get_req_create(uint64_t region_id, uint32_t key_
 	if (par_net_get_req_calc_size(key_size) > *buffer_len)
 		return NULL;
 
-	struct par_net_get_req *request = (struct par_net_get_req *)(&buffer[par_net_header_calc_size()]);
+	struct par_net_get_req *request = (struct par_net_get_req *)(buffer);
 	request->region_id = region_id;
 	request->key_size = key_size;
 
-	memcpy(&buffer[par_net_header_calc_size() + sizeof(struct par_net_get_req)], key, key_size);
+	memcpy(&buffer[sizeof(struct par_net_get_req)], key, key_size);
 	return request;
 }
 
@@ -58,6 +59,7 @@ struct par_net_get_rep *par_net_get_rep_create(int is_found,struct par_value *v,
   *rep_len = par_net_get_rep_calc_size(v->val_size);
   struct par_net_get_rep *reply = malloc(*rep_len);
 
+  reply->total_bytes = *rep_len;
 	reply->is_found = is_found;
   if(!is_found)
     return reply;

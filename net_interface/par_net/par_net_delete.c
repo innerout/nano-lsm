@@ -8,6 +8,7 @@ struct par_net_del_req {
 
 struct par_net_del_rep {
 	uint32_t status;
+  uint32_t total_bytes;
 } __attribute__((packed));
 
 size_t par_net_del_req_calc_size(uint32_t key_size)
@@ -26,11 +27,11 @@ struct par_net_del_req *par_net_del_req_create(uint64_t region_id, uint32_t key_
 	if (par_net_del_req_calc_size(key_size) > *buffer_len)
 		return NULL;
 
-	struct par_net_del_req *request = (struct par_net_del_req *)(&buffer[par_net_header_calc_size()]);
+	struct par_net_del_req *request = (struct par_net_del_req *)(buffer);
 	request->key_size = key_size;
 	request->region_id = region_id;
 
-	memcpy(&buffer[par_net_header_calc_size() + sizeof(struct par_net_del_req)], key, key_size);
+	memcpy(&buffer[sizeof(struct par_net_del_req)], key, key_size);
 
 	return request;
 }
@@ -54,7 +55,8 @@ struct par_net_del_rep *par_net_del_rep_create(int status, size_t *rep_len)
 {
 	struct par_net_del_rep *reply = malloc(sizeof(struct par_net_del_rep));
 	*rep_len = par_net_del_rep_calc_size();
-
+  
+  reply->total_bytes = *rep_len;
 	reply->status = status;
 	return reply;
 }

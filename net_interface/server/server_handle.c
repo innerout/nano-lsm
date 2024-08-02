@@ -1146,9 +1146,9 @@ char* par_net_call_close(char* buffer, size_t *buffer_len, void* args)
 	par_handle handle = (par_handle)region_id;
 	
 	const char* return_string = par_close(handle);
-	if(!return_string){
+	if(return_string){
 		log_fatal("Error in par_close");
-		reply = par_net_close_rep_create(1, return_string, buffer_len);
+		reply = par_net_close_rep_create(1, NULL, buffer_len);
 		return (char*)reply;
 	}
 
@@ -1185,6 +1185,7 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
     log_debug("Handling Larger message");
     worker->recv_buffer_size = total_bytes;
     worker->recv_buffer = (char*)realloc(worker->recv_buffer, worker->recv_buffer_size);
+    assert(worker->recv_buffer != NULL);
     worker->recv_buffer_size = worker->recv_buffer_size;
 
     iov[0].iov_base = &worker->recv_buffer[bytes_received];
