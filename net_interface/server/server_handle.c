@@ -1010,11 +1010,6 @@ static size_t par_net_get_total_bytes(char* buffer){
 
 par_call par_net_call[6] = { NULL, par_net_call_open, par_net_call_put, par_net_call_del, par_net_call_get, par_net_call_close };
 
-typedef enum{
-  KEY_NOT_FOUND = 0,
-  KEY_FOUND
-}is_key_found;
-
 char *par_net_call_open(char *buffer, size_t *buffer_len, void* args)
 {
   (void)args; 
@@ -1125,11 +1120,12 @@ char *par_net_call_get(char *buffer, size_t *buffer_len, void* args)
 
 	if (error_message) {
 		log_debug("%s", error_message);
-		reply = par_net_get_rep_create(KEY_NOT_FOUND,&v, buffer_len);
+		reply = par_net_get_rep_create(0,&v, buffer_len);
 		return (char *)reply;
 	}
 
-	reply = par_net_get_rep_create(KEY_FOUND, &v, buffer_len);
+  log_debug("Key found!");
+	reply = par_net_get_rep_create(1, &v, buffer_len);
 	return (char *)reply;
 }
 
@@ -1201,13 +1197,6 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
     bytes_received += extra_bytes_received;
   }
 
-  log_debug("total_bytes == %lu", total_bytes);
-  log_debug("bytes received == %lu", (unsigned long)bytes_received);
-  if(total_bytes != (size_t)bytes_received){
-    log_fatal("Bytes not transmitted");
-    _exit(EXIT_FAILURE); 
-  }
-
   log_debug("Total message size == %ld", bytes_received);
 	uint32_t opcode = par_net_header_get_opcode(worker->recv_buffer);
 
@@ -1237,8 +1226,13 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
 
 	ssize_t bytes_sent = sendmsg(client_sock, &msg_reply, 0);
 	if (bytes_sent < 0) {
-		log_error("sendmsg failed");
-		return EXIT_FAILURE;
+		log_debug("Remote side has probably closed the socket");
+    if(close(client_sock) < 0){
+      log_debug("Could not close client socket");
+      return EXIT_FAILURE;
+    }
+
+		return EXIT_SUCCESS;
 	}
 
   log_info("Reply sent successfully");

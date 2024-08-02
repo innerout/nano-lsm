@@ -1,6 +1,6 @@
 #include "par_net_open.h"
+#include "log.h"
 #include "par_net.h"
-#include <stdint.h>
 
 struct par_net_open_req {
 	uint64_t opt_value;
@@ -65,6 +65,7 @@ struct par_net_open_rep *par_net_open_rep_create(int status, par_handle handle, 
 	struct par_net_open_rep *reply = malloc(sizeof(struct par_net_open_rep));
 	*rep_len = par_net_open_rep_calc_size();
 
+  log_debug("Rep len == %lu", *rep_len);
 	reply->status = status;
 
 	if (status == 1)
@@ -82,8 +83,9 @@ par_handle par_net_open_rep_handle_reply(char *buffer)
 		log_fatal("Invalid Reply status");
 		_exit(EXIT_FAILURE);
 	}
-
+  
 	par_handle handle = (par_handle)reply->region_id;
+
 
 	return handle;
 }

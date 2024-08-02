@@ -36,53 +36,31 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct par_net_header{
-  uint32_t total_bytes;
-  uint32_t opcode;
-};
-
-#define INITIAL_NET_BUF_SIZE sizeof(struct par_net_header)
-
 #define PAR_MAX_PREALLOCATED_SIZE 256
 
 struct par_handle{
   char recv_buffer[KV_MAX_SIZE];
   char send_buffer[KV_MAX_SIZE];
-  struct sockaddr_in server_addr;
   pthread_mutex_t lock;
   uint64_t region_id;
   int sockfd;
+  uint32_t recv_buffer_size;
+  uint32_t send_buffer_size;
  };
 
-char* recv_buffer;
-size_t net_buffer_size = INITIAL_NET_BUF_SIZE;
-
-struct par_net_socket{
-  int sockfd;
-  struct sockaddr_in server_addr;
+struct par_net_header{
+  uint32_t total_bytes;
+  uint32_t opcode;
 };
-
-struct par_net_socket socket_info;
 
 size_t par_net_header_calc_size(void){
   return sizeof(struct par_net_header); 
 }
 
-void par_net_header_set_total_bytes(char* buffer ,uint32_t total_bytes){
-   memcpy(buffer, &total_bytes, sizeof(uint32_t));
-}
-
-void par_net_header_set_opcode(char* buffer,uint32_t opcode){
-  memcpy(buffer + sizeof(uint32_t), &opcode, sizeof(uint32_t));
-}
-
-static size_t par_net_get_total_bytes(char* buffer){
-  uint32_t total_bytes;
-  memcpy(&total_bytes, buffer, sizeof(uint32_t));
-  return total_bytes;
-} 
-
-void par_net_init(void){
+static par_handle par_net_init(void)
+{
+  struct par_handle *handle = calloc(1UL,sizeof(struct par_handle));
+  
   int sockfd;
   struct sockaddr_in server_addr;
 
@@ -101,30 +79,29 @@ void par_net_init(void){
 		log_error("Could not connect to server");
 		_exit(EXIT_FAILURE);
 	}
+  
+  handle->sockfd = sockfd;
+  handle->recv_buffer_size = KV_MAX_SIZE;
+  handle->send_buffer_size = KV_MAX_SIZE;
 
-  socket_info.sockfd = sockfd;
-  socket_info.server_addr = server_addr;
-
-  recv_buffer = malloc(INITIAL_NET_BUF_SIZE);
-
-  return;
+  return (par_handle)handle;
 }
 
-char *par_net_RPC(char *buffer, size_t *buffer_len)
+char *par_net_RPC(par_handle handle,char *buffer, size_t *buffer_len)
 {
-	int sockfd = socket_info.sockfd;
+  struct par_handle* client_handle = (struct par_handle*)handle;
+	int sockfd = client_handle->sockfd;
 
 	struct msghdr msg = { 0 };
 	struct iovec iov[1];
-	ssize_t bytes_sent,bytes_received;
 
 	iov[0].iov_base = buffer;
 	iov[0].iov_len = *buffer_len;
 
 	msg.msg_iov = iov;
 	msg.msg_iovlen = 1;
-
-  bytes_sent = sendmsg(sockfd, &msg, 0);
+ 
+  ssize_t bytes_sent = sendmsg(sockfd, &msg, 0);
 	if (bytes_sent < 0) {
 		perror("TCP_CLIENT_SENDMSG");
 		log_fatal("Sendmsg failed");
@@ -138,43 +115,23 @@ char *par_net_RPC(char *buffer, size_t *buffer_len)
 	struct iovec iov_reply[1];
 	struct msghdr msg_reply = { 0 };
 
-	iov_reply[0].iov_base = recv_buffer;
-	iov_reply[0].iov_len = net_buffer_size;
+	iov_reply[0].iov_base = client_handle->recv_buffer;
+	iov_reply[0].iov_len = client_handle->recv_buffer_size;
 
 	memset(&msg_reply, 0, sizeof(msg_reply));
 	msg_reply.msg_iov = iov_reply;
 	msg_reply.msg_iovlen = 1;
 
+  ssize_t bytes_received = 0;
   bytes_received = recvmsg(sockfd, &msg_reply, 0);
   if (bytes_received < 0) {
-        perror("recvmsg");
-        exit(EXIT_FAILURE);
+      perror("recvmsg");
+      exit(EXIT_FAILURE);
   }
-
-  size_t total_bytes = par_net_get_total_bytes(recv_buffer);
-
-  if(total_bytes > net_buffer_size){
-    log_debug("Handling Larger message");
-    net_buffer_size = total_bytes;
-    recv_buffer = (char*)realloc(recv_buffer, net_buffer_size);
-    assert(recv_buffer != NULL);
-
-    iov_reply[0].iov_base = &recv_buffer[bytes_received];
-    iov_reply[0].iov_len = net_buffer_size - bytes_received;
-    ssize_t extra_bytes_received = recvmsg(sockfd, &msg_reply,0);
-    if(extra_bytes_received < 0){
-        perror("recvmsg");
-        exit(EXIT_FAILURE);
-    }
-
-    log_debug("extra bytes received == %lu", extra_bytes_received);
-    
-    bytes_received += extra_bytes_received;
-  }
-
-  log_debug("Total Reply size == %lu", bytes_received);
   
-  return recv_buffer;
+  log_debug("Total Reply size == %ld", bytes_received);
+  
+  return client_handle->recv_buffer;
 }
 
 char *par_format(char *device_name, uint32_t max_regions_num)
@@ -189,55 +146,54 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 par_handle par_open(par_db_options *db_options, const char **error_message)
 {
 
-  par_net_init();
-
+  struct par_handle *handle = (struct par_handle*)par_net_init();
 	size_t buffer_len = par_net_open_req_calc_size(par_net_get_size(db_options->db_name)) + par_net_header_calc_size();
 	 
-	char *buffer = malloc(buffer_len);
-  par_net_header_set_total_bytes(buffer,buffer_len);
+  struct par_net_header *header = (struct par_net_header*)(handle->send_buffer);
+  header->total_bytes = buffer_len; 
+  header->opcode = OPCODE_OPEN;
 
-  char* send_buffer = buffer + par_net_header_calc_size();
- 
-	uint32_t opcode = OPCODE_OPEN;
-  par_net_header_set_opcode(buffer,opcode);
+  char* send_buffer = &handle->send_buffer[par_net_header_calc_size()];
 
-	struct par_net_open_req *request =
+  struct par_net_open_req *request =
 		par_net_open_req_create(db_options->create_flag, db_options->db_name, send_buffer , &buffer_len);
 
 	char *serialized_buffer = (char *)request - par_net_header_calc_size();
 
-	char *reply_buffer = par_net_RPC(serialized_buffer, &buffer_len);
+	char *reply_buffer = par_net_RPC(handle, serialized_buffer, &buffer_len);
 
 	if (!reply_buffer) {
 		*error_message = "Communication with server failed";
 		return NULL;
 	}
 
-	par_handle handle = par_net_open_rep_handle_reply(reply_buffer);
-	if (!handle) {
+	par_handle ret_handle = par_net_open_rep_handle_reply(reply_buffer);
+  handle->region_id = (uint64_t)ret_handle;
+
+	if (!ret_handle) {
 		*error_message = "Operation (open) failed";
 		return NULL;
 	}
 
-	return handle;
+	return (par_handle)handle;
 }
 
 const char *par_close(par_handle handle)
 {
+  struct par_handle* close_handle = (struct par_handle*)handle; 
 	size_t buffer_len = par_net_close_req_calc_size() + par_net_header_calc_size();
-	char *buffer = malloc(buffer_len);
-  par_net_header_set_total_bytes(buffer, buffer_len);
-	
-  char* send_buffer = buffer + par_net_header_calc_size();
-  uint32_t opcode = OPCODE_CLOSE;
-	par_net_header_set_opcode(buffer,opcode);
+  
+  struct par_net_header *header = (struct par_net_header*)(close_handle->send_buffer);
+  header->total_bytes = buffer_len;
+  header->opcode = OPCODE_CLOSE;
 
-	uint64_t region_id = (uint64_t)handle;
+  char* send_buffer = &close_handle->send_buffer[par_net_header_calc_size()];
+  uint64_t region_id = close_handle->region_id;
 	struct par_net_close_req *request = par_net_close_req_create(region_id, send_buffer, &buffer_len);
 
 	char *serialized_buffer = (char *)request - par_net_header_calc_size();
 
-	char *reply_buffer = par_net_RPC(serialized_buffer, &buffer_len);
+	char *reply_buffer = par_net_RPC(handle,serialized_buffer, &buffer_len);
 
 	if (!reply_buffer){
     return "Error with sending buffer";
@@ -274,26 +230,25 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 //cppcheck-suppress constParameterPointer
 struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
-	struct par_put_metadata sample_return_value = { 0 };
+  struct par_handle *put_handle = (struct par_handle*)handle;	
+  struct par_put_metadata sample_return_value = { 0 };
 
 	size_t buffer_len = par_net_put_req_calc_size(key_value->k.size, key_value->v.val_size) + par_net_header_calc_size();
-  char *buffer = malloc(buffer_len);
-  par_net_header_set_total_bytes(buffer, buffer_len);
+    
+  struct par_net_header *header = (struct par_net_header*)(put_handle->send_buffer);
+  header->total_bytes = buffer_len;
+  header->opcode = OPCODE_PUT;
 
-  char* send_buffer = buffer + par_net_header_calc_size();
-	
-  uint32_t opcode = OPCODE_PUT;
-	par_net_header_set_opcode(buffer, opcode);
-
+  char* send_buffer = &put_handle->send_buffer[par_net_header_calc_size()];
   log_debug("Value == %s", key_value->v.val_buffer);
 
-  struct par_net_put_req *request = par_net_put_req_create((uint64_t)handle, key_value->k.size,
+  struct par_net_put_req *request = par_net_put_req_create(put_handle->region_id, key_value->k.size,
 								 key_value->k.data, key_value->v.val_size,
 								 key_value->v.val_buffer, send_buffer, &buffer_len);
 
 	char *serialized_buffer = (char *)request - par_net_header_calc_size();
 
-	char *reply_buffer = par_net_RPC(serialized_buffer, &buffer_len);
+	char *reply_buffer = par_net_RPC(handle,serialized_buffer, &buffer_len);
 
 	if (!reply_buffer) {
 		*error_message = "Communication with server failed";
@@ -323,21 +278,22 @@ struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_k
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
 {
   
+  struct par_handle *get_handle = (struct par_handle*)handle;
 	size_t buffer_len = par_net_put_req_calc_size(key->size, value->val_size) + par_net_header_calc_size();
-	char *buffer = malloc(buffer_len);
-  par_net_header_set_total_bytes(buffer, buffer_len);
-  
-  char* send_buffer = buffer + par_net_header_calc_size();
-  uint32_t opcode = OPCODE_GET;
-  par_net_header_set_opcode(buffer,opcode);
+	
+  struct par_net_header* header = (struct par_net_header*)(get_handle->send_buffer);
+  header->total_bytes = buffer_len;
+  header->opcode = OPCODE_GET;
 
-	struct par_net_get_req *request = par_net_get_req_create((uint64_t)handle, key->size, key->data,
+  char* send_buffer = &get_handle->send_buffer[par_net_header_calc_size()];
+
+	struct par_net_get_req *request = par_net_get_req_create(get_handle->region_id, key->size, key->data,
 								  send_buffer,
 								 &buffer_len);
 
 	char *serialized_buffer = (char *)request - par_net_header_calc_size();
 
-	char *reply_buffer = par_net_RPC(serialized_buffer, &buffer_len);
+	char *reply_buffer = par_net_RPC(handle,serialized_buffer, &buffer_len);
 	if (!reply_buffer) {
 		*error_message = "Communication with server failed";
 		return;
@@ -359,9 +315,9 @@ void par_get_serialized(par_handle handle, char *key_serialized, struct par_valu
   
   if(*error_message){
     log_fatal("%s", *error_message);
+    _exit(EXIT_FAILURE);
   }
 
-	return;
 }
 
 // cppcheck-suppress constParameterPointer
@@ -398,20 +354,21 @@ uint64_t par_init_compaction_id(par_handle handle)
 // cppcheck-suppress constParameterPointer
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)
 {
+  struct par_handle *delete_handle = (struct par_handle*)handle;
 	size_t buffer_len = par_net_del_req_calc_size(key->size) + par_net_header_calc_size();
-	char *buffer = malloc(buffer_len);
-  par_net_header_set_total_bytes(buffer, buffer_len);
-  
-  char *send_buffer = buffer + par_net_header_calc_size();
-  uint32_t opcode = OPCODE_DEL;
-	par_net_header_set_opcode(buffer, opcode);
+	
+  struct par_net_header *header = (struct par_net_header*)(delete_handle->send_buffer);
+  header->total_bytes = buffer_len;
+  header->opcode = OPCODE_DEL;
+
+  char *send_buffer = &delete_handle->send_buffer[par_net_header_calc_size()];
 
 	struct par_net_del_req *request =
-		par_net_del_req_create((uint64_t)(uintptr_t)handle, key->size, key->data, send_buffer, &buffer_len);
+		par_net_del_req_create(delete_handle->region_id, key->size, key->data, send_buffer, &buffer_len);
 
 	char *serialized_buffer = (char *)request - 2*sizeof(uint32_t);
 
-	char *reply_buffer = par_net_RPC(serialized_buffer, &buffer_len);
+	char *reply_buffer = par_net_RPC(handle,serialized_buffer, &buffer_len);
 
 	if (!reply_buffer) {
 		*error_message = "Communication with server failed";
