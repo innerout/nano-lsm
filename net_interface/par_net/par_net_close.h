@@ -13,7 +13,6 @@ struct par_net_close_req;
 
 struct par_net_close_rep;
 
-
 /**
   * @brief calculates total size of par_net_close_req struct and the sizes
   * of the key and value.
@@ -44,19 +43,6 @@ struct par_net_close_req *par_net_close_req_create(uint64_t region_id, char *buf
 */
 uint64_t par_net_close_get_region_id(struct par_net_close_req *request);
 
-
-/**
-  * @brief Calls par_close from the server side using the parallax public API
-  *
-  * @param buffer
-  * @param buffer_len
-  * @param args
-  *
-  * @return A buffer containing the server's reply 
-  */ 
-char* par_net_call_close(char *buffer, size_t *buffer_len, void* args);
-
-
 /**
  * @brief calculates the size of the par_net_close_req struct
  *
@@ -73,17 +59,16 @@ size_t par_net_close_rep_calc_size(uint32_t string_size);
  *
  * @return par_net_close_rep object
 */
-struct par_net_close_rep *par_net_close_rep_create(int status, const char* return_string, size_t *rep_len);
+struct par_net_close_rep *par_net_close_rep_create(int status, const char *return_string, size_t *rep_len);
 
 /**
   * @brief getter for the par_close error_messsge string
   *
-  * @param reply 
+  * @param reply
   *
   * @return error_messsge
-  */ 
-const char* par_net_close_get_string(struct par_net_close_rep *reply);
-
+  */
+const char *par_net_close_get_string(struct par_net_close_rep *reply);
 
 /**
  * @brief Takes the reply from server and checks if it's done correctly
@@ -91,6 +76,6 @@ const char* par_net_close_get_string(struct par_net_close_rep *reply);
  * @param buffer
  *
 */
-const char* par_net_close_rep_handle_reply(char* buffer);
+const char *par_net_close_rep_handle_reply(char *buffer);
 
 #endif

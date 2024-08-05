@@ -29,20 +29,8 @@ size_t par_net_get_req_calc_size(uint32_t key_size);
   * @return An object of the response struct on success and NULL on failure
   *
   */
-struct par_net_get_req *par_net_get_req_create(uint64_t region_id, uint32_t key_size, const char *key,
-					       char *buffer,
+struct par_net_get_req *par_net_get_req_create(uint64_t region_id, uint32_t key_size, const char *key, char *buffer,
 					       size_t *buffer_len);
-
-/**
-  * @brief Calls par_get from the server side using the parallax public API
-  *
-  * @param buffer
-  * @param buffer_len
-  * @param args
-  *
-  * @return A buffer containing the server's reply 
-  */ 
-char *par_net_call_get(char *buffer, size_t *buffer_len, void* args);
 
 /**
  * @brief getter for region_id
@@ -86,7 +74,7 @@ size_t par_net_get_rep_calc_size(uint32_t value_size);
  *
  * @return par_net_get_rep object
 */
-struct par_net_get_rep *par_net_get_rep_create(int status, struct par_value *v ,size_t *rep_len);
+struct par_net_get_rep *par_net_get_rep_create(int status, struct par_value *v, size_t *rep_len);
 
 /**
  * @brief Takes the reply from server and checks if it's done correctly
@@ -94,6 +82,6 @@ struct par_net_get_rep *par_net_get_rep_create(int status, struct par_value *v ,
  * @param buffer
  *
 */
-int par_net_get_rep_handle_reply(char *buffer,struct par_value *v);
+int par_net_get_rep_handle_reply(char *buffer, struct par_value *v);
 
 #endif

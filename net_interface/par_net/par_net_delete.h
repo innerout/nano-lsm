@@ -41,18 +41,6 @@ size_t par_net_del_req_calc_size(uint32_t key_size);
 struct par_net_del_req *par_net_del_req_create(uint64_t region_id, uint32_t key_size, const char *key, char *buffer,
 					       size_t *buffer_len);
 
-
-/**
-  * @brief Calls par_delete from the server side using the parallax public API
-  *
-  * @param buffer
-  * @param buffer_len
-  * @param args
-  *
-  * @return A buffer containing the server's reply 
-  */ 
-char *par_net_call_del(char *buffer, size_t *buffer_len, void* args);
-
 /**
  * @brief getter for region_id
  *

@@ -14,7 +14,6 @@ struct par_net_put_req;
 
 struct par_net_put_rep;
 
-
 /**
   * @brief calculates total size of par_net_put_req struct and the sizes
   * of the key and value.
@@ -45,17 +44,6 @@ size_t par_net_put_req_calc_size(uint32_t key_size, uint32_t value_size);
 struct par_net_put_req *par_net_put_req_create(uint64_t region_id, uint32_t key_size, const char *key,
 					       uint32_t value_size, const char *value, char *buffer,
 					       size_t *buffer_len);
-
-/**
-  * @brief Calls par_put from the server side using the parallax public API
-  *
-  * @param buffer
-  * @param buffer_len
-  * @param args
-  *
-  * @return A buffer containing the server's reply 
-  */ 
-char *par_net_call_put(char *buffer, size_t *buffer_len, void* args);
 
 /**
  * @brief getter for region_id

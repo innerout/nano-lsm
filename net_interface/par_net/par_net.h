@@ -7,26 +7,23 @@
 #include <assert.h>
 #include <log.h>
 #include <spin_loop.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "par_net_close.h"
 #include "par_net_delete.h"
 #include "par_net_get.h"
 #include "par_net_open.h"
 #include "par_net_put.h"
-#include "par_net_close.h"
-
-#define MAX_OPCODE 6
+struct worker;
 
 enum par_net_op { OPCODE_OPEN = 1, OPCODE_PUT, OPCODE_DEL, OPCODE_GET, OPCODE_CLOSE };
 
-typedef char *(*par_call)(char *buffer, size_t *buffer_len, void* args);
-
-extern par_call par_net_call[MAX_OPCODE];
+typedef char *(*par_call)(struct worker *worker, char *buffer, size_t *buffer_len, void *args);
 
 /**
   *  @brief Takes the first byte of the serialized stream and translates it to

@@ -41,27 +41,14 @@ size_t par_net_open_req_calc_size(uint32_t name_size);
   * ready for serialization
   *
   * @param flag
-  * @param name 
+  * @param name
   * @param buffer
   * @param buffer_len
   *
   * @return An object of the response struct on success and NULL on failure
   *
   */
-struct par_net_open_req *par_net_open_req_create(uint8_t flag,const char *name,
-												 char *buffer, size_t *buffer_len);
-
-/**
- * @brief Calls par_open from the server side using the parallax public API
- *
- * @param buffer
- * @param buffer_len
- * @param args
- *
- * @return A buffer containing the server's reply
- *
-*/
-char *par_net_call_open(char *buffer, size_t *buffer_len, void* args);
+struct par_net_open_req *par_net_open_req_create(uint8_t flag, const char *name, char *buffer, size_t *buffer_len);
 
 /**
  * @brief getter for options->value

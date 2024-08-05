@@ -3,16 +3,13 @@
 
 #include "tcp_errors.h"
 #include "tcp_types.h"
-
 #include <sys/socket.h>
 
-typedef void *sHandle;
-typedef void *sConfig;
+struct server_handle;
+struct server_options;
 typedef void *s_tcp_req;
 typedef void *s_tcp_rep;
 
-extern uint32_t level0_size;
-extern uint32_t GF;
 /**
  * @brief Initializes an sConfig Object according to the parameters passed to the program (argv). The
  * parameters @a argc and @a argv must be passed exactly as are, from the @b main()'s parameters,
@@ -28,8 +25,8 @@ extern uint32_t GF;
  * @param argv
  * @return int
  */
-int server_parse_argv_opts(sConfig __restrict__ *__restrict__ sConfig, int argc,
-			   char *__restrict__ *__restrict__ argv) __attribute_warn_unused_result__;
+struct server_options *server_parse_argv_opts(int argc,
+					      char *__restrict__ *__restrict__ argv) __attribute_warn_unused_result__;
 
 /**
  * @brief
@@ -37,7 +34,7 @@ int server_parse_argv_opts(sConfig __restrict__ *__restrict__ sConfig, int argc,
  * @param shandle
  * @return int
  */
-int server_print_config(sHandle shandle);
+int server_print_config(struct server_handle *server_handle);
 
 /**
  * @brief Initializes an sHandle Object from the given sConfig Object, which must have been initialized with
@@ -51,8 +48,7 @@ int server_print_config(sHandle shandle);
  * @param server_config
  * @return int
  */
-int server_handle_init(sHandle __restrict__ *__restrict__ server_handle,
-		       sConfig __restrict__ server_config) __attribute_warn_unused_result__;
+struct server_handle *server_handle_init(struct server_options *server_options) __attribute_warn_unused_result__;
 
 /**
  * @brief Creates all server threads that will be listening to requests from clients. On success, 0 is
@@ -65,7 +61,7 @@ int server_handle_init(sHandle __restrict__ *__restrict__ server_handle,
  * @param server_handle
  * @return int
  */
-int server_spawn_threads(sHandle server_handle) __attribute_warn_unused_result__;
+int server_spawn_threads(struct server_handle *server_handle) __attribute_warn_unused_result__;
 
 /**
  * @brief
@@ -73,7 +69,7 @@ int server_spawn_threads(sHandle server_handle) __attribute_warn_unused_result__
  * @param server_handle
  * @return int
  */
-int server_wait_threads(sHandle server_handle) __attribute__((deprecated("DO NOT USE!")));
+int server_wait_threads(struct server_handle *server_handle) __attribute__((deprecated("DO NOT USE!")));
 
 /**
  * @brief
@@ -81,6 +77,6 @@ int server_wait_threads(sHandle server_handle) __attribute__((deprecated("DO NOT
  * @param shandle
  * @return int
  */
-int server_handle_destroy(sHandle shandle);
+int server_handle_destroy(struct server_handle *server_handle);
 
 #endif /* PARALLAX_TCP_SERVER_H */

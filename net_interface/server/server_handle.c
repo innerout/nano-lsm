@@ -1,9 +1,9 @@
-#include "btree/conf.h"
 #define _GNU_SOURCE
-#include "../par_net/par_net.h"
 #include "server_handle.h"
 #include "../allocator/djb2.h"
+#include "../par_net/par_net.h"
 #include "btree/btree.h"
+#include "btree/conf.h"
 #include "btree/kv_pairs.h"
 #include "parallax/parallax.h"
 #include "parallax/structures.h"
@@ -17,6 +17,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +26,6 @@
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <stdarg.h>
 
 #ifdef SSL
 #include "../common/common_ssl/mbedtls_utility.h"
@@ -54,7 +54,7 @@
 #define MAGIC_INIT_NUM (0xCAFEu)
 #define EPOLL_MAX_EVENTS 64
 
-#define PORT_MAX ((1L << 16) - 1L)
+#define PORT_MAX 65536
 
 /*** server options ***/
 #define DECIMAL_BASE 10
@@ -76,13 +76,11 @@
 	" -GF, --GF <growth factor>           specify the growth factor of levels in each Parallax region\n\n " \
 	" -h, --help     display this help and exit\n"                                                          \
 	" -v, --version  display version information and exit\n"                                                \
-  " -pf, --par_format           (Optional) specify whether database should be formatted\n"                
+	" -pf, --par_format           (Optional) specify whether database should be formatted\n"
 
 #define NECESSARY_OPTIONS 6
 
 #define VERSION_STRING "tcp-server 0.1\n"
-
-#define ERROR_STRING "\033[1m[\033[31m*\033[0;1m]\033[0m"
 
 #define CONFIG_STRING           \
 	"[ Server Config ]\n"   \
@@ -91,34 +89,31 @@
 	"  - file = %s\n"       \
 	"  - flags = not yet supported\n"
 
-struct par_net_header{
-  uint32_t total_bytes;
-  uint32_t opcode;
-}; 
-
+struct par_net_header {
+	uint32_t total_bytes;
+	uint32_t opcode;
+};
 
 #define INITIAL_NET_BUF_SIZE sizeof(struct par_net_header)
 
 /** server argv[] options **/
 
 struct server_options {
-	uint16_t magic_init_num;
+	uint32_t magic_init_num;
 	uint32_t threadno;
-
 	const char *paddr; // printable ip address
 	long port;
-	const char *dbpath;
-
+	const char *parallax_vol_name;
 	struct sockaddr_storage inaddr; // ip address + port
-  
-  uint8_t format;
+	uint32_t l0_size;
+	uint32_t growth_factor;
+	uint8_t format;
 };
 
 /** server worker **/
 
 struct worker {
-	// par_handle par_handle;
-	struct server_handle *shandle;
+	struct server_handle *server_handle;
 	pthread_t tid;
 
 	int32_t epfd;
@@ -128,11 +123,11 @@ struct worker {
 	struct buffer buf;
 	struct par_value pval;
 
-  char* recv_buffer;
-  size_t recv_buffer_size;
+	char *recv_buffer;
+	size_t recv_buffer_size;
 
-  char* par_get_buffer;
-  size_t par_get_buffer_size;
+	char *par_get_buffer;
+	size_t par_get_buffer_size;
 };
 
 #ifdef SSL
@@ -145,14 +140,13 @@ struct conn_info {
 #endif
 
 /** server handle **/
-#define MAX_PARALLAX_DBS 1
 struct server_handle {
 	uint16_t magic_init_num;
 	uint32_t flags;
 	int32_t sock;
 	int32_t epfd;
 
-	par_handle par_handle[MAX_PARALLAX_DBS];
+	par_handle par_handle;
 
 	struct server_options *opts;
 	struct worker *workers;
@@ -178,9 +172,6 @@ struct tcp_rep {
 
 struct server_handle *g_sh; // CTRL-C
 _Thread_local const char *par_error_message_tl;
-
-#define reset_errno() errno = 0
-#define __offsetof_struct1(s, f) (uint64_t)(&((s *)(0UL))->f)
 
 #define infinite_loop_start() for (;;) {
 #define infinite_loop_end() }
@@ -229,205 +220,134 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
 static int __pin_thread_to_core(int core);
 #endif
 
-/***** public functions *****/
-
-int server_parse_argv_opts(sConfig restrict *restrict sconfig, int argc, char *restrict *restrict argv)
+/*refactor start*/
+static void server_check_arg(int argc, int option_id)
 {
-	if (!sconfig) {
-		errno = EINVAL;
-		return -(EXIT_FAILURE);
-	}
-
-	if (argc <= 1) {
-		fprintf(stderr, USAGE_STRING);
-		exit(EXIT_FAILURE);
-	}
-
-	struct server_options *opts;
-	int opt_sum = 0;
-
-	if (!(*sconfig = calloc(1UL, sizeof(*opts))))
-		return -(EXIT_FAILURE);
-
-	opts = *sconfig;
-  
-	for (int i = 1; i < argc; ++i) {
-		if (argv[i][0] != '-') {
-			fprintf(stderr, ERROR_STRING " tcp-server: uknown option '%s'\n", argv[i]);
-			free(opts);
-			exit(EXIT_FAILURE);
-		}
-
-		/*/
-     * Both 'struct sockaddr_in' (IPv4) and 'struct sockaddr_in6' (IPv6) have
-     * the first two of their struct fields identical. First comes the 'socket
-     * family' (2-Bytes) and then the 'port' (2-Bytes). As a result of this,
-     * when setting either the port or the family, there is no problem to
-     * typecast 'struct sockaddr_storage', which can store every address of
-     * every socket family in linux, to any of 'struct sockaddr_in' or 'struct
-     * sockaddr_in6'. [/usr/include/netinet/in.h]
-     */
-    
-		if (!strcmp(argv[i], "-t") || !strcmp(argv[i], "--threads")) {
-			reset_errno();
-			long thrnum = strtol(argv[++i], NULL, DECIMAL_BASE);
-
-			if (errno) {
-				if (errno == EINVAL)
-					fprintf(stderr, ERROR_STRING " tcp-server: invalid number in option '%s'\n",
-						argv[i - 1U]);
-				else
-					fprintf(stderr,
-						ERROR_STRING " tcp-server: number out-of-range in option '%s'\n",
-						argv[i - 1U]);
-
-				free(opts);
-				exit(EXIT_FAILURE);
-			}
-
-			if (thrnum < 0) {
-				fprintf(stderr, ERROR_STRING " tcp-server: invalid number in option '%s'\n",
-					argv[i - 1U]);
-				free(opts);
-				exit(EXIT_FAILURE);
-			}
-
-			++opt_sum;
-			opts->threadno = (unsigned int)thrnum;
-		} else if (!strcmp(argv[i], "-p") || !strcmp(argv[i], "--port")) {
-			reset_errno();
-			long port = strtol(argv[++i], NULL, DECIMAL_BASE);
-
-			if (errno) {
-				if (errno == EINVAL)
-					fprintf(stderr, ERROR_STRING " tcp-server: invalid number in option '%s'\n",
-						argv[i - 1U]);
-				else
-					fprintf(stderr,
-						ERROR_STRING " tcp-server: number out-of-range in option '%s'\n",
-						argv[i - 1U]);
-
-				free(opts);
-				exit(EXIT_FAILURE);
-			}
-      
-			if (port < 0) {
-				fprintf(stderr, ERROR_STRING " tcp-server: invalid number in option '%s'\n",
-					argv[i - 1U]);
-				free(opts);
-				exit(EXIT_FAILURE);
-			} else if (port > PORT_MAX) {
-				fprintf(stderr, ERROR_STRING " tcp-server: port is too big\n");
-				free(opts);
-				exit(EXIT_FAILURE);
-			}
-
-			++opt_sum;
-			((struct sockaddr_in *)(&opts->inaddr))->sin_port = htons((unsigned short)(port));
-			opts->port = port;
-		} else if (!strcmp(argv[i], "-b") || !strcmp(argv[i], "--bind")) {
-			if (!argv[++i]) {
-				fprintf(stderr, ERROR_STRING " tcp-server: no address provided!\n");
-				free(opts);
-				exit(EXIT_FAILURE);
-			}
-
-			int is_v6 = 0;
-
-			for (int tmp = 0; argv[i][tmp]; ++tmp) // is this address IPv6?
-			{
-				if (argv[i][tmp] == ':') {
-					is_v6 = 1;
-					break;
-				}
-			}
-
-			off_t off;
-
-			if (is_v6) {
-				opts->inaddr.ss_family = AF_INET6;
-				off = __offsetof_struct1(struct sockaddr_in6, sin6_addr);
-			} else {
-				opts->inaddr.ss_family = AF_INET;
-				off = __offsetof_struct1(struct sockaddr_in, sin_addr);
-			}
-
-			if (!inet_pton(opts->inaddr.ss_family, argv[i], (char *)(&opts->inaddr) + off)) {
-				fprintf(stderr, ERROR_STRING " tcp-server: invalid address\n");
-				free(opts);
-				exit(EXIT_FAILURE);
-			}
-
-			++opt_sum;
-			opts->paddr = argv[i];
-		} else if (!strcmp(argv[i], "-L0") || !strcmp(argv[i], "--L0_size")) {
-			if (!argv[++i]) {
-				fprintf(stderr, ERROR_STRING " tcp-server: no address provided!\n");
-				free(opts);
-				exit(EXIT_FAILURE);
-			}
-			level0_size = strtoul(argv[i], NULL, 10);
-			level0_size = MB(level0_size);
-			++opt_sum;
-		} else if (!strcmp(argv[i], "-GF") || !strcmp(argv[i], "--GF")) {
-			if (!argv[++i]) {
-				fprintf(stderr, ERROR_STRING " tcp-server: no address provided!\n");
-				free(opts);
-				exit(EXIT_FAILURE);
-			}
-			GF = strtoul(argv[i], NULL, 10);
-			++opt_sum;
-		} else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
-		help:
-			fprintf(stdout, HELP_STRING);
-			free(opts);
-			exit(EXIT_SUCCESS);
-		} else if (!strcmp(argv[i], "-v") || !strcmp(argv[i], "--version")) {
-			fprintf(stdout, VERSION_STRING);
-			free(opts);
-			exit(EXIT_SUCCESS);
-		} else if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--file")) {
-			if (!argv[++i]) {
-				fprintf(stderr, ERROR_STRING " tcp-server: no file provided!\n");
-				free(opts);
-				exit(EXIT_FAILURE);
-			}
-
-			++opt_sum;
-			opts->dbpath = argv[i];
-		} else if (!strcmp(argv[i], "-pf") ||!strcmp(argv[i], "--par_format")){
-       opts->format = 1; 
-    }else {
-			fprintf(stderr, ERROR_STRING " tcp-server: uknown option '%s'\n", argv[i]);
-			free(opts);
-			exit(EXIT_FAILURE);
-		}
-	}
-  
-	if (opt_sum != NECESSARY_OPTIONS)
-		goto help;
-
-	opts->magic_init_num = MAGIC_INIT_NUM;
-
-	return EXIT_SUCCESS;
+	if (option_id < argc)
+		return;
+	log_fatal("tcp-server: option requires an argument");
+	_exit(EXIT_FAILURE);
 }
 
-int server_print_config(sHandle server_handle)
+static long server_parse_number(const char *str, const char *opt)
+{
+	errno = 0;
+	long num = strtol(str, NULL, DECIMAL_BASE);
+	if (0 == errno)
+		return num;
+	if (errno == EINVAL) {
+		log_fatal("tcp-server: invalid number in option '%s'\n", opt);
+		_exit(EXIT_FAILURE);
+	}
+	log_fatal("tcp-server: number out-of-range in option '%s'\n", opt);
+	_exit(EXIT_FAILURE);
+}
+
+static void server_set_port(struct server_options *opts, const char *arg)
+{
+	long port = server_parse_number(arg, "-p/--port");
+	if (port < 0 || port > PORT_MAX) {
+		log_fatal("tcp-server: invalid port number '%ld'\n", port);
+	}
+	opts->port = port;
+	((struct sockaddr_in *)(&opts->inaddr))->sin_port = htons((unsigned short)port);
+}
+
+static void server_set_address(struct server_options *opts, const char *arg)
+{
+	int is_v6 = strchr(arg, ':') != NULL;
+	opts->inaddr.ss_family = is_v6 ? AF_INET6 : AF_INET;
+	size_t off = is_v6 ? offsetof(struct sockaddr_in6, sin6_addr) : offsetof(struct sockaddr_in, sin_addr);
+	if (!inet_pton(opts->inaddr.ss_family, arg, (char *)(&opts->inaddr) + off)) {
+		log_fatal("tcp-server: invalid address '%s'\n", arg);
+	}
+	opts->paddr = arg;
+}
+
+struct server_options *server_parse_argv_opts(int argc, char *restrict *restrict argv)
+{
+	if (argc <= 1) {
+		log_fatal("%s", USAGE_STRING);
+		_exit(EXIT_FAILURE);
+	}
+
+	struct server_options *server_options = calloc(1, sizeof(*server_options));
+	if (!server_options) {
+		log_fatal("tcp-server: memory allocation failed");
+		_exit(EXIT_FAILURE);
+	}
+	server_options->magic_init_num = MAGIC_INIT_NUM;
+
+	int opt_num = 0;
+
+	for (int i = 1; i < argc; ++i) {
+		if (argv[i][0] != '-') {
+			log_fatal("tcp-server: unknown option '%s'\n", argv[i]);
+		}
+
+		if (!strcmp(argv[i], "-t") || !strcmp(argv[i], "--threads")) {
+			server_check_arg(argc, ++i);
+			long thrnum = server_parse_number(argv[i], "-t/--threads");
+			if (thrnum < 0) {
+				log_fatal("tcp-server: invalid thread number '%ld'\n", thrnum);
+			}
+			server_options->threadno = (unsigned int)thrnum;
+			++opt_num;
+		} else if (!strcmp(argv[i], "-p") || !strcmp(argv[i], "--port")) {
+			server_check_arg(argc, ++i);
+			server_set_port(server_options, argv[i]);
+			++opt_num;
+		} else if (!strcmp(argv[i], "-b") || !strcmp(argv[i], "--bind")) {
+			server_check_arg(argc, ++i);
+			server_set_address(server_options, argv[i]);
+			++opt_num;
+		} else if (!strcmp(argv[i], "-L0") || !strcmp(argv[i], "--L0_size")) {
+			server_check_arg(argc, ++i);
+			server_options->l0_size = strtoul(argv[i], NULL, 10) * (1 << 20);
+			++opt_num;
+		} else if (!strcmp(argv[i], "-GF") || !strcmp(argv[i], "--GF")) {
+			server_check_arg(argc, ++i);
+			server_options->growth_factor = strtoul(argv[i], NULL, 10);
+			++opt_num;
+		} else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
+			log_fatal("%s\n", HELP_STRING);
+		} else if (!strcmp(argv[i], "-v") || !strcmp(argv[i], "--version")) {
+			log_fatal("%s\n", VERSION_STRING);
+		} else if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--file")) {
+			server_check_arg(argc, ++i);
+			server_options->parallax_vol_name = strdup(argv[i]);
+			++opt_num;
+		} else if (!strcmp(argv[i], "-pf") || !strcmp(argv[i], "--par_format")) {
+			server_options->format = 1;
+		} else {
+			log_fatal("tcp-server: unknown option '%s'\n", argv[i]);
+		}
+	}
+
+	if (opt_num != NECESSARY_OPTIONS) {
+		log_fatal("%s\n", HELP_STRING);
+		_exit(EXIT_FAILURE);
+	}
+	return server_options;
+}
+
+/*refactor end*/
+
+int server_print_config(struct server_handle *server_handle)
 {
 	if (!server_handle) {
 		errno = EINVAL;
 		return -(EXIT_FAILURE);
 	}
 
-	struct server_handle *shandle = server_handle;
-
-	if (shandle->magic_init_num != MAGIC_INIT_NUM) {
+	if (server_handle->magic_init_num != MAGIC_INIT_NUM) {
 		errno = EINVAL;
 		return -(EXIT_FAILURE);
 	}
 
-	printf(CONFIG_STRING, shandle->opts->threadno, shandle->opts->paddr,
-	       ntohs(((struct sockaddr_in *)(&shandle->opts->inaddr))->sin_port), shandle->opts->dbpath);
+	printf(CONFIG_STRING, server_handle->opts->threadno, server_handle->opts->paddr,
+	       ntohs(((struct sockaddr_in *)(&server_handle->opts->inaddr))->sin_port),
+	       server_handle->opts->parallax_vol_name);
 
 	return EXIT_SUCCESS;
 }
@@ -477,34 +397,31 @@ mbedtls_pk_context pkey;
 const char *pers = "tls_server";
 #endif
 
-int server_handle_init(sHandle restrict *restrict server_handle, sConfig restrict server_config)
+struct server_handle *server_handle_init(struct server_options *server_options)
 {
-	if (!server_handle || !server_config) {
-		errno = EINVAL;
-		return -(EXIT_FAILURE);
+	if (!server_options) {
+		log_fatal("server options is NULL");
+		_exit(EXIT_FAILURE);
 	}
 
-	struct server_options *sconf = server_config;
-
-	if (sconf->magic_init_num != MAGIC_INIT_NUM) {
+	if (server_options->magic_init_num != MAGIC_INIT_NUM) {
 		errno = EINVAL;
-		return -(EXIT_FAILURE);
+		log_fatal("This is NOT a server_options object!");
+		_exit(EXIT_FAILURE);
 	}
 
-	/** END OF ERROR HANDLING **/
+	struct server_handle *server_handle =
+		calloc(1UL, sizeof(struct server_handle) + (server_options->threadno * sizeof(struct worker)));
+	if (server_handle == NULL)
+		_exit(EXIT_FAILURE);
 
-	if (!(*server_handle = malloc(sizeof(struct server_handle) + (sconf->threadno * sizeof(struct worker)))))
-		return -(EXIT_FAILURE);
-
-	struct server_handle *shandle = *server_handle;
-
-	shandle->opts = sconf;
-	shandle->workers = (struct worker *)((char *)(shandle) + sizeof(struct server_handle));
-	shandle->sock = -1;
-	shandle->epfd = -1;
-  log_debug("Net buffer initialized");
+	server_handle->opts = server_options;
+	server_handle->workers = (struct worker *)((char *)(server_handle) + sizeof(struct server_handle));
+	server_handle->sock = -1;
+	server_handle->epfd = -1;
+	log_debug("Net buffer initialized");
 #ifdef SSL
-	if (pthread_rwlock_init(&shandle->lock, NULL) != 0) {
+	if (pthread_rwlock_init(&server_handle->lock, NULL) != 0) {
 		return -(EXIT_FAILURE);
 	}
 
@@ -516,12 +433,12 @@ int server_handle_init(sHandle restrict *restrict server_handle, sConfig restric
 	}
 #endif
 
-	shandle->conn_ht = NULL;
+	server_handle->conn_ht = NULL;
 	// init mbedtls objects
 	int ret = 0;
 	char port_str[10];
 	sprintf(port_str, "%ld", sconf->port);
-	mbedtls_net_init(&shandle->listen_fd);
+	mbedtls_net_init(&server_handle->listen_fd);
 	mbedtls_ssl_config_init(&conf);
 	mbedtls_x509_crt_init(&server_cert);
 	mbedtls_pk_init(&pkey);
@@ -531,11 +448,11 @@ int server_handle_init(sHandle restrict *restrict server_handle, sConfig restric
 	oe_verifier_initialize();
 #endif
 
-	if ((ret = mbedtls_net_bind(&shandle->listen_fd, sconf->paddr, port_str, MBEDTLS_NET_PROTO_TCP)) != 0) {
+	if ((ret = mbedtls_net_bind(&server_handle->listen_fd, sconf->paddr, port_str, MBEDTLS_NET_PROTO_TCP)) != 0) {
 		log_fatal("mbedtls_net_bind returned %d\n", ret);
 		goto cleanup;
 	}
-	shandle->sock = shandle->listen_fd.fd;
+	server_handle->sock = server_handle->listen_fd.fd;
 	if ((ret = mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy, (const unsigned char *)pers,
 					 strlen(pers))) != 0) {
 		log_fatal("mbedtls_ctr_drbg_seed returned %d\n", ret);
@@ -548,48 +465,48 @@ int server_handle_init(sHandle restrict *restrict server_handle, sConfig restric
 		goto cleanup;
 	}
 #else
-	sa_family_t fam = sconf->inaddr.ss_family;
+	sa_family_t fam = server_options->inaddr.ss_family;
 
-	if ((shandle->sock = socket(fam, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0)) < 0)
+	if ((server_handle->sock = socket(fam, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0)) < 0)
 		goto cleanup;
 
 	int opt = 1;
-	setsockopt(shandle->sock, SOL_SOCKET, SO_REUSEADDR, &opt,
+	setsockopt(server_handle->sock, SOL_SOCKET, SO_REUSEADDR, &opt,
 		   sizeof(opt)); /** TODO: remove, only for debug purposes! */
 
-	if (bind(shandle->sock, (struct sockaddr *)(&sconf->inaddr),
+	if (bind(server_handle->sock, (struct sockaddr *)(&server_options->inaddr),
 		 (fam == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6)) < 0)
 		goto cleanup;
 
-	if (listen(shandle->sock, TT_MAX_LISTEN) < 0)
+	if (listen(server_handle->sock, TT_MAX_LISTEN) < 0)
 		goto cleanup;
 #endif
-	if ((shandle->epfd = epoll_create1(EPOLL_CLOEXEC)) < 0)
+	if ((server_handle->epfd = epoll_create1(EPOLL_CLOEXEC)) < 0)
 		goto cleanup;
 
-	struct epoll_event epev = { .events = EPOLLIN | EPOLLRDHUP | EPOLLONESHOT, .data.fd = shandle->sock };
+	struct epoll_event epev = { .events = EPOLLIN | EPOLLRDHUP | EPOLLONESHOT, .data.fd = server_handle->sock };
 
-	if (epoll_ctl(shandle->epfd, EPOLL_CTL_ADD, shandle->sock, &epev) < 0) {
+	if (epoll_ctl(server_handle->epfd, EPOLL_CTL_ADD, server_handle->sock, &epev) < 0) {
 		log_fatal("epoll_ctl failed");
 		goto cleanup;
 	}
 
-  const char *error_message;
+	const char *error_message = NULL;
 	/** initialize parallax **/
-  if(shandle->opts->format){
-    log_info("Format option enabled");
-	  error_message = par_format((char *)(sconf->dbpath), MAX_REGIONS);
-    
-	  if (error_message) {
-		  log_fatal("%s", error_message);
-		  return -(EXIT_FAILURE);
-	  }
+	if (server_handle->opts->format) {
+		log_info("Format option enabled");
+		error_message = par_format((char *)(server_options->parallax_vol_name), MAX_REGIONS);
 
-  }else{
-    log_info("Format option not enabled");
-  }
+		if (error_message) {
+			log_fatal("%s", error_message);
+			_exit(EXIT_FAILURE);
+		}
 
-  /*
+	} else {
+		log_info("Format option not enabled");
+	}
+
+	/*
   par_db_options db_options = { .volume_name = (char *)(sconf->dbpath), // fuck clang_format!
 				      .create_flag = PAR_CREATE_DB,
 				      .db_name = "tcp_server_par.db",
@@ -604,17 +521,17 @@ int server_handle_init(sHandle restrict *restrict server_handle, sConfig restric
 			return -(EXIT_FAILURE);
 		}
 		db_options.db_name = actual_db_name;
-		shandle->par_handle[i] = par_open(&db_options, &error_message);
+		server_handle->par_handle[i] = par_open(&db_options, &error_message);
 	}
 */
 
-	shandle->magic_init_num = MAGIC_INIT_NUM;
+	server_handle->magic_init_num = MAGIC_INIT_NUM;
 
-	return EXIT_SUCCESS;
+	return server_handle;
 
 cleanup:
 #ifdef SSL
-	mbedtls_net_free(&shandle->listen_fd);
+	mbedtls_net_free(&server_handle->listen_fd);
 	mbedtls_x509_crt_free(&server_cert);
 	mbedtls_pk_free(&pkey);
 	mbedtls_ssl_config_free(&conf);
@@ -624,17 +541,15 @@ cleanup:
 	oe_verifier_shutdown();
 #endif
 #endif
-	close(shandle->sock);
-	close(shandle->epfd);
-	free(*server_handle);
-	return -(EXIT_FAILURE);
+	close(server_handle->sock);
+	close(server_handle->epfd);
+	free(server_handle);
+	return NULL;
 }
 
-int server_handle_destroy(sHandle server_handle)
+int server_handle_destroy(struct server_handle *server_handle)
 {
-	struct server_handle *shandle = server_handle;
-
-	if (!server_handle || shandle->magic_init_num != MAGIC_INIT_NUM) {
+	if (!server_handle || server_handle->magic_init_num != MAGIC_INIT_NUM) {
 		errno = EINVAL;
 		return -(EXIT_FAILURE);
 	}
@@ -643,7 +558,7 @@ int server_handle_destroy(sHandle server_handle)
 
 	// signal all threads to cancel
 #ifdef SSL
-	mbedtls_net_free(&shandle->listen_fd);
+	mbedtls_net_free(&server_handle->listen_fd);
 	mbedtls_x509_crt_free(&server_cert);
 	mbedtls_pk_free(&pkey);
 	mbedtls_ssl_config_free(&conf);
@@ -654,12 +569,12 @@ int server_handle_destroy(sHandle server_handle)
 #endif
 #endif
 
-	close(shandle->sock);
-	close(shandle->epfd);
-	munmap(shandle->workers[0].buf.mem, shandle->opts->threadno * DEF_BUF_SIZE);
-	free(shandle->opts);
+	close(server_handle->sock);
+	close(server_handle->epfd);
+	munmap(server_handle->workers[0].buf.mem, server_handle->opts->threadno * DEF_BUF_SIZE);
+	free(server_handle->opts);
 
-	const char *error_message = par_close(shandle->par_handle);
+	const char *error_message = par_close(server_handle->par_handle);
 
 	if (error_message) {
 		log_fatal("%s", error_message);
@@ -671,55 +586,53 @@ int server_handle_destroy(sHandle server_handle)
 	return EXIT_SUCCESS;
 }
 
-int server_spawn_threads(sHandle server_handle)
+int server_spawn_threads(struct server_handle *server_handle)
 {
 	if (!server_handle) {
 		errno = EINVAL;
 		return -(EXIT_FAILURE);
 	}
 
-	struct server_handle *shandle = server_handle;
-
-	if (shandle->magic_init_num != MAGIC_INIT_NUM) {
+	if (server_handle->magic_init_num != MAGIC_INIT_NUM) {
 		errno = EINVAL;
 		return -(EXIT_FAILURE);
 	}
 
 	/** END OF ERROR HANDLING **/
 
-	uint32_t threads = shandle->opts->threadno;
+	uint32_t threads = server_handle->opts->threadno;
 
-	if ((shandle->workers[0].buf.mem = mmap(NULL, threads * DEF_BUF_SIZE, PROT_READ | PROT_WRITE,
-						MAP_PRIVATE | MAP_ANONYMOUS, -1, 0UL)) == MAP_FAILED)
+	if ((server_handle->workers[0].buf.mem = mmap(NULL, threads * DEF_BUF_SIZE, PROT_READ | PROT_WRITE,
+						      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0UL)) == MAP_FAILED)
 		return -(EXIT_FAILURE);
 
 	uint32_t index;
 
 	for (index = 0U, --threads; index < threads; ++index) {
-		shandle->workers[index].core = index;
-		shandle->workers[index].sock = shandle->sock;
-		shandle->workers[index].epfd = shandle->epfd;
-		// shandle->workers[index].par_handle = shandle->par_handle;
-		shandle->workers[index].shandle = shandle;
-		shandle->workers[index].buf.bytes = DEF_BUF_SIZE;
-		shandle->workers[index].buf.mem = shandle->workers[0].buf.mem + (index * DEF_BUF_SIZE);
-		shandle->workers[index].pval.val_size = 0U;
-		shandle->workers[index].pval.val_buffer_size = KV_MAX_SIZE;
-		shandle->workers[index].pval.val_buffer =
-			shandle->workers[index].buf.mem + TT_REPHDR_SIZE; // [!] one shared buffer per thread!
+		server_handle->workers[index].core = index;
+		server_handle->workers[index].sock = server_handle->sock;
+		server_handle->workers[index].epfd = server_handle->epfd;
+		// server_handle->workers[index].par_handle = server_handle->par_handle;
+		server_handle->workers[index].server_handle = server_handle;
+		server_handle->workers[index].buf.bytes = DEF_BUF_SIZE;
+		server_handle->workers[index].buf.mem = server_handle->workers[0].buf.mem + (index * DEF_BUF_SIZE);
+		server_handle->workers[index].pval.val_size = 0U;
+		server_handle->workers[index].pval.val_buffer_size = KV_MAX_SIZE;
+		server_handle->workers[index].pval.val_buffer =
+			server_handle->workers[index].buf.mem + TT_REPHDR_SIZE; // [!] one shared buffer per thread!
 
-		if (pthread_create(&shandle->workers[index].tid, NULL, __handle_events,
-				   shandle->workers + index)) { // one of the server threads failed!
+		if (pthread_create(&server_handle->workers[index].tid, NULL, __handle_events,
+				   server_handle->workers + index)) { // one of the server threads failed!
 			uint32_t tmp;
 
 			/* kill all threads that have been created by now */
 			for (tmp = 0; tmp < index; ++tmp)
-				pthread_cancel(shandle->workers[tmp].tid);
+				pthread_cancel(server_handle->workers[tmp].tid);
 
 			for (tmp = 0; tmp < index; ++tmp)
-				pthread_join(shandle->workers[tmp].tid, NULL);
+				pthread_join(server_handle->workers[tmp].tid, NULL);
 
-			munmap(shandle->workers[0].buf.mem, threads * DEF_BUF_SIZE);
+			munmap(server_handle->workers[0].buf.mem, threads * DEF_BUF_SIZE);
 
 			return -(EXIT_FAILURE);
 		}
@@ -727,19 +640,19 @@ int server_spawn_threads(sHandle server_handle)
 
 	// convert 'main()-thread' to 'server-thread'
 
-	shandle->workers[index].core = index;
-	shandle->workers[index].tid = pthread_self();
-	shandle->workers[index].sock = shandle->sock;
-	shandle->workers[index].epfd = shandle->epfd;
-	// shandle->workers[index].par_handle = shandle->par_handle;
-	shandle->workers[index].shandle = shandle;
-	shandle->workers[index].buf.bytes = DEF_BUF_SIZE;
-	shandle->workers[index].buf.mem = shandle->workers[0].buf.mem + (index * DEF_BUF_SIZE);
-	shandle->workers[index].pval.val_size = 0U;
-	shandle->workers[index].pval.val_buffer_size = KV_MAX_SIZE;
-	shandle->workers[index].pval.val_buffer = shandle->workers[index].buf.mem + TT_REPHDR_SIZE;
+	server_handle->workers[index].core = index;
+	server_handle->workers[index].tid = pthread_self();
+	server_handle->workers[index].sock = server_handle->sock;
+	server_handle->workers[index].epfd = server_handle->epfd;
+	// server_handle->workers[index].par_handle = server_handle->par_handle;
+	server_handle->workers[index].server_handle = server_handle;
+	server_handle->workers[index].buf.bytes = DEF_BUF_SIZE;
+	server_handle->workers[index].buf.mem = server_handle->workers[0].buf.mem + (index * DEF_BUF_SIZE);
+	server_handle->workers[index].pval.val_size = 0U;
+	server_handle->workers[index].pval.val_buffer_size = KV_MAX_SIZE;
+	server_handle->workers[index].pval.val_buffer = server_handle->workers[index].buf.mem + TT_REPHDR_SIZE;
 
-	__handle_events(shandle->workers + index);
+	__handle_events(server_handle->workers + index);
 
 	return EXIT_SUCCESS;
 }
@@ -780,7 +693,7 @@ static int __handle_new_connection(struct worker *this)
 		log_fatal("malloc of mbedtls_net_context failed");
 		return -(EXIT_FAILURE);
 	}
-	if ((tmpfd = mbedtls_net_accept(&this->shandle->listen_fd, client_fd, NULL, 0, NULL)) < 0) {
+	if ((tmpfd = mbedtls_net_accept(&this->server_handle->listen_fd, client_fd, NULL, 0, NULL)) < 0) {
 		log_fatal("mbedtls_net_accept failed with %s", strerror(errno));
 		free(ssl_session);
 		free(client_fd);
@@ -810,10 +723,10 @@ static int __handle_new_connection(struct worker *this)
 	conn_info->fd = client_fd->fd;
 	conn_info->ssl_session = ssl_session;
 	conn_info->client_fd = client_fd;
-	if (pthread_rwlock_wrlock(&this->shandle->lock) != 0)
+	if (pthread_rwlock_wrlock(&this->server_handle->lock) != 0)
 		exit(EXIT_FAILURE);
-	HASH_ADD_INT(this->shandle->conn_ht, fd, conn_info);
-	pthread_rwlock_unlock(&this->shandle->lock);
+	HASH_ADD_INT(this->server_handle->conn_ht, fd, conn_info);
+	pthread_rwlock_unlock(&this->server_handle->lock);
 
 #else
 	if ((tmpfd = accept(this->sock, NULL, NULL)) < 0) {
@@ -881,10 +794,10 @@ static void *__handle_events(void *arg)
 
 	struct epoll_event rearm_event = { .events = EPOLLIN | EPOLLRDHUP | EPOLLONESHOT };
 	struct epoll_event epoll_events[EPOLL_MAX_EVENTS];
-  this->recv_buffer = calloc(1UL,INITIAL_NET_BUF_SIZE);
-  this->recv_buffer_size = INITIAL_NET_BUF_SIZE;
-  this->par_get_buffer = calloc(1UL, KV_MAX_SIZE);
-  this->par_get_buffer_size = KV_MAX_SIZE;
+	this->recv_buffer = calloc(1UL, INITIAL_NET_BUF_SIZE);
+	this->recv_buffer_size = INITIAL_NET_BUF_SIZE;
+	this->par_get_buffer = calloc(1UL, KV_MAX_SIZE);
+	this->par_get_buffer_size = KV_MAX_SIZE;
 	// pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 	// push cleanup function (like at_exit())
 
@@ -897,8 +810,8 @@ static void *__handle_events(void *arg)
 		continue;
 	}
 
-  this->par_get_buffer_size = KV_MAX_SIZE;
-  this->par_get_buffer_size = KV_MAX_SIZE;
+	this->par_get_buffer_size = KV_MAX_SIZE;
+	this->par_get_buffer_size = KV_MAX_SIZE;
 	event_loop_start(evindex, events);
 
 	client_sock = epoll_events[evindex].data.fd;
@@ -919,14 +832,14 @@ static void *__handle_events(void *arg)
 		close(client_sock);
 #ifdef SSL
 		struct conn_info *conn_info;
-		if (pthread_rwlock_wrlock(&this->shandle->lock) != 0) {
+		if (pthread_rwlock_wrlock(&this->server_handle->lock) != 0) {
 			continue;
 		}
-		HASH_FIND_INT(this->shandle->conn_ht, &client_sock, conn_info);
+		HASH_FIND_INT(this->server_handle->conn_ht, &client_sock, conn_info);
 		free(conn_info->ssl_session);
 		free(conn_info->client_fd);
-		HASH_DEL(this->shandle->conn_ht, conn_info);
-		pthread_rwlock_unlock(&this->shandle->lock);
+		HASH_DEL(this->server_handle->conn_ht, conn_info);
+		pthread_rwlock_unlock(&this->server_handle->lock);
 #endif
 	} else if (likely(event_bits & EPOLLIN)) /** read event **/
 	{
@@ -960,14 +873,14 @@ static void *__handle_events(void *arg)
 		close(client_sock);
 #ifdef SSL
 		struct conn_info *conn_info;
-		if (pthread_rwlock_wrlock(&this->shandle->lock) != 0) {
+		if (pthread_rwlock_wrlock(&this->server_handle->lock) != 0) {
 			continue;
 		}
-		HASH_FIND_INT(this->shandle->conn_ht, &client_sock, conn_info);
+		HASH_FIND_INT(this->server_handle->conn_ht, &client_sock, conn_info);
 		free(conn_info->ssl_session);
 		free(conn_info->client_fd);
-		HASH_DEL(this->shandle->conn_ht, conn_info);
-		pthread_rwlock_unlock(&this->shandle->lock);
+		HASH_DEL(this->server_handle->conn_ht, conn_info);
+		pthread_rwlock_unlock(&this->server_handle->lock);
 #endif
 	} else if (unlikely(event_bits & EPOLLERR)) /** error **/
 	{
@@ -982,50 +895,51 @@ static void *__handle_events(void *arg)
 	__builtin_unreachable();
 }
 
-struct par_net_arg{
-  char* get_buffer;
-  uint32_t get_buffer_size;
+struct par_net_arg {
+	char *get_buffer;
+	uint32_t get_buffer_size;
 };
 
-size_t par_net_header_calc_size(void){
-  return sizeof(struct par_net_header);
+size_t par_net_header_calc_size(void)
+{
+	return sizeof(struct par_net_header);
 }
+
+#define MAX_OPCODE 6
 
 uint32_t par_net_header_get_opcode(char *buffer)
 {
-  struct par_net_header* header = (struct par_net_header*)buffer;
-  
-  if (header->opcode >= MAX_OPCODE)
+	struct par_net_header *header = (struct par_net_header *)buffer;
+
+	if (header->opcode >= MAX_OPCODE)
 		return 0;
- 
+
 	return header->opcode;
 }
 
-static size_t par_net_get_total_bytes(char* buffer)
+static size_t par_net_get_total_bytes(char *buffer)
 {
-  struct par_net_header* header = (struct par_net_header*)buffer;
-  return header->total_bytes;
-} 
+	struct par_net_header *header = (struct par_net_header *)buffer;
+	return header->total_bytes;
+}
 
-par_call par_net_call[6] = { NULL, par_net_call_open, par_net_call_put, par_net_call_del, par_net_call_get, par_net_call_close };
-
-char *par_net_call_open(char *buffer, size_t *buffer_len, void* args)
+static char *par_net_call_open(struct worker *worker, char *buffer, size_t *buffer_len, void *args)
 {
-  (void)args; 
-  log_debug("Calling par_open");
-	struct par_net_open_rep *reply;
+	(void)args;
+	log_debug("Calling par_open");
+	struct par_net_open_rep *reply = NULL;
 	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + par_net_header_calc_size());
 
-  par_db_options db_options = { 0 };
-  db_options.options = par_get_default_options(); 
-	db_options.db_name = par_net_open_get_dbname(request);	
-  db_options.create_flag = par_net_open_get_flag(request);
- 
-  db_options.volume_name ="/home/tasath/junk.data";
+	par_db_options db_options = { 0 };
+	db_options.options = par_get_default_options();
+	db_options.db_name = par_net_open_get_dbname(request);
+	db_options.create_flag = par_net_open_get_flag(request);
 
- 	const char *error_message = NULL;
+	db_options.volume_name = (char *)worker->server_handle->opts->parallax_vol_name;
+
+	const char *error_message = NULL;
 	log_debug("db name is == %s", db_options.db_name);
-  par_handle handle = par_open(&db_options, &error_message);
+	par_handle handle = par_open(&db_options, &error_message);
 
 	if (error_message) {
 		log_fatal("%s", error_message);
@@ -1038,10 +952,11 @@ char *par_net_call_open(char *buffer, size_t *buffer_len, void* args)
 	return (char *)reply;
 }
 
-char *par_net_call_put(char *buffer, size_t *buffer_len, void* args)
+static char *par_net_call_put(struct worker *worker, char *buffer, size_t *buffer_len, void *args)
 {
-  (void)args;
-  log_debug("Calling par_put");
+	(void)args;
+	(void)worker;
+	log_debug("Calling par_put");
 	struct par_net_put_rep *reply;
 	struct par_net_put_req *request = (struct par_net_put_req *)(buffer + par_net_header_calc_size());
 
@@ -1051,10 +966,10 @@ char *par_net_call_put(char *buffer, size_t *buffer_len, void* args)
 	kv.v.val_size = par_net_put_get_value_size(request);
 	kv.k.data = par_net_put_get_key(request);
 	kv.v.val_buffer = par_net_put_get_value(request);
-  kv.v.val_buffer_size = par_net_put_get_value_size(request);
+	kv.v.val_buffer_size = par_net_put_get_value_size(request);
 
-  log_debug("Key size =  %lu",  (unsigned long)kv.k.size);
-  log_debug("Value size = %lu", (unsigned long)kv.v.val_buffer_size);
+	log_debug("Key size =  %lu", (unsigned long)kv.k.size);
+	log_debug("Value size = %lu", (unsigned long)kv.v.val_buffer_size);
 
 	const char *error_message = NULL;
 	struct par_put_metadata metadata;
@@ -1070,14 +985,15 @@ char *par_net_call_put(char *buffer, size_t *buffer_len, void* args)
 	return (char *)reply;
 }
 
-char *par_net_call_del(char *buffer, size_t *buffer_len, void* args)
+static char *par_net_call_del(struct worker *worker, char *buffer, size_t *buffer_len, void *args)
 {
-  (void)args;
-  log_info("Calling par_delete");
+	(void)args;
+	(void)worker;
+	log_info("Calling par_delete");
 	struct par_net_del_rep *reply;
 	struct par_net_del_req *request = (struct par_net_del_req *)(&buffer[par_net_header_calc_size()]);
 
-  struct par_key key = { 0 };
+	struct par_key key = { 0 };
 	uint64_t region_id = par_net_del_get_region_id(request);
 	key.size = par_net_del_get_key_size(request);
 	key.data = par_net_del_get_key(request);
@@ -1095,67 +1011,71 @@ char *par_net_call_del(char *buffer, size_t *buffer_len, void* args)
 	return (char *)reply;
 }
 
-char *par_net_call_get(char *buffer, size_t *buffer_len, void* args)
+static char *par_net_call_get(struct worker *worker, char *buffer, size_t *buffer_len, void *args)
 {
-  log_debug("Calling par_get");
+	(void)worker;
+	log_debug("Calling par_get");
 	struct par_net_get_rep *reply;
 	struct par_net_get_req *request = (struct par_net_get_req *)(buffer + par_net_header_calc_size());
 
 	uint64_t region_id = par_net_get_get_region_id(request);
-	struct par_key k;
-  k.size = par_net_get_get_key_size(request);
-	k.data = par_net_get_get_key(request);
-  
-  struct par_value v;
-  struct par_net_arg *params = (struct par_net_arg *)args;
-  v.val_buffer = params->get_buffer;
-  v.val_size = params->get_buffer_size;
-  v.val_buffer_size = v.val_size;
+	struct par_key par_key;
+	par_key.size = par_net_get_get_key_size(request);
+	par_key.data = par_net_get_get_key(request);
 
-  log_debug("key size == %lu", (unsigned long)k.size);
-  const char *error_message = NULL;
-	par_get((par_handle)region_id, &k, &v, &error_message);
-  log_debug("Value size == %lu", (unsigned long)v.val_size);
+	struct par_value par_value;
+	struct par_net_arg *params = (struct par_net_arg *)args;
+	par_value.val_buffer = params->get_buffer;
+	par_value.val_size = params->get_buffer_size;
+	par_value.val_buffer_size = par_value.val_size;
+
+	log_debug("key size == %lu", (unsigned long)par_key.size);
+	const char *error_message = NULL;
+	par_get((par_handle)region_id, &par_key, &par_value, &error_message);
+	log_debug("Value size == %lu", (unsigned long)par_value.val_size);
 
 	if (error_message) {
 		log_debug("%s", error_message);
-		reply = par_net_get_rep_create(0,&v, buffer_len);
+		reply = par_net_get_rep_create(0, &par_value, buffer_len);
 		return (char *)reply;
 	}
 
-  log_debug("Key found!");
-	reply = par_net_get_rep_create(1, &v, buffer_len);
+	log_debug("Key found!");
+	reply = par_net_get_rep_create(1, &par_value, buffer_len);
 	return (char *)reply;
 }
 
-char* par_net_call_close(char* buffer, size_t *buffer_len, void* args)
+static char *par_net_call_close(struct worker *worker, char *buffer, size_t *buffer_len, void *args)
 {
-  
-  (void)args;
-  log_debug("Calling par_close");
+	(void)worker;
+	(void)args;
+	log_debug("Calling par_close");
 	struct par_net_close_rep *reply;
 	struct par_net_close_req *request = (struct par_net_close_req *)(buffer + par_net_header_calc_size());
 
 	uint64_t region_id = par_net_close_get_region_id(request);
 
 	par_handle handle = (par_handle)region_id;
-	
-	const char* return_string = par_close(handle);
-	if(return_string){
+
+	const char *return_string = par_close(handle);
+	if (return_string) {
 		log_fatal("Error in par_close");
 		reply = par_net_close_rep_create(1, NULL, buffer_len);
-		return (char*)reply;
+		return (char *)reply;
 	}
 
 	reply = par_net_close_rep_create(0, return_string, buffer_len);
-	return (char*)reply;
-	
+	return (char *)reply;
 }
+
+par_call par_net_call[MAX_OPCODE] = {
+	NULL, par_net_call_open, par_net_call_put, par_net_call_del, par_net_call_get, par_net_call_close
+};
 
 static int __par_handle_req(struct worker *restrict worker, int client_sock, struct tcp_req *restrict req)
 {
-  (void)req;
-  
+	(void)req;
+
 	struct iovec iov[1];
 	struct msghdr msg;
 
@@ -1165,54 +1085,54 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
 	memset(&msg, 0, sizeof(msg));
 	msg.msg_iov = iov;
 	msg.msg_iovlen = 1;
-  msg.msg_flags = 0;
+	msg.msg_flags = 0;
 
-  log_debug("Begin receive message");
-  ssize_t bytes_received = recvmsg(client_sock, &msg, 0);
-  if (bytes_received < 0) {
-        perror("recvmsg");
-        _exit(EXIT_FAILURE);
-  }
+	log_debug("Begin receive message");
+	ssize_t bytes_received = recvmsg(client_sock, &msg, 0);
+	if (bytes_received < 0) {
+		perror("recvmsg");
+		_exit(EXIT_FAILURE);
+	}
 
-  size_t total_bytes = par_net_get_total_bytes(worker->recv_buffer);
+	size_t total_bytes = par_net_get_total_bytes(worker->recv_buffer);
 
-  if(total_bytes > worker->recv_buffer_size){
-    log_debug("Handling Larger message");
-    worker->recv_buffer_size = total_bytes;
-    worker->recv_buffer = (char*)realloc(worker->recv_buffer, worker->recv_buffer_size);
-    assert(worker->recv_buffer != NULL);
-    worker->recv_buffer_size = worker->recv_buffer_size;
+	if (total_bytes > worker->recv_buffer_size) {
+		log_debug("Handling Larger message");
+		worker->recv_buffer_size = total_bytes;
+		worker->recv_buffer = (char *)realloc(worker->recv_buffer, worker->recv_buffer_size);
+		assert(worker->recv_buffer != NULL);
+		worker->recv_buffer_size = worker->recv_buffer_size;
 
-    iov[0].iov_base = &worker->recv_buffer[bytes_received];
-    iov[0].iov_len = worker->recv_buffer_size - bytes_received;
+		iov[0].iov_base = &worker->recv_buffer[bytes_received];
+		iov[0].iov_len = worker->recv_buffer_size - bytes_received;
 
-    ssize_t extra_bytes_received = recvmsg(client_sock, &msg, 0);
-    if (extra_bytes_received < 0) {
-        perror("recvmsg");
-        _exit(EXIT_FAILURE);
-    }
+		ssize_t extra_bytes_received = recvmsg(client_sock, &msg, 0);
+		if (extra_bytes_received < 0) {
+			perror("recvmsg");
+			_exit(EXIT_FAILURE);
+		}
 
-    log_debug("extra bytes received == %lu", extra_bytes_received);
-    bytes_received += extra_bytes_received;
-  }
+		log_debug("extra bytes received == %lu", extra_bytes_received);
+		bytes_received += extra_bytes_received;
+	}
 
-  log_debug("Total message size == %ld", bytes_received);
+	log_debug("Total message size == %ld", bytes_received);
 	uint32_t opcode = par_net_header_get_opcode(worker->recv_buffer);
 
-  if (opcode == 0){
+	if (opcode == 0) {
 		log_fatal("invalid opcode");
-    return EXIT_FAILURE;
-  }
+		return EXIT_FAILURE;
+	}
 
-  struct par_net_arg args = {0};
-  if(opcode == OPCODE_GET){
-    args.get_buffer = worker->par_get_buffer;
-    args.get_buffer_size = worker->par_get_buffer_size;
-  }
+	struct par_net_arg args = { 0 };
+	if (opcode == OPCODE_GET) {
+		args.get_buffer = worker->par_get_buffer;
+		args.get_buffer_size = worker->par_get_buffer_size;
+	}
 
 	size_t rep_buffer_len = 0;
-	char *reply = par_net_call[opcode](worker->recv_buffer, &rep_buffer_len, &args);
-  
+	char *reply = par_net_call[opcode](worker, worker->recv_buffer, &rep_buffer_len, &args);
+
 	struct iovec iov_reply[1];
 	struct msghdr msg_reply = { 0 };
 
@@ -1226,14 +1146,14 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
 	ssize_t bytes_sent = sendmsg(client_sock, &msg_reply, 0);
 	if (bytes_sent < 0) {
 		log_debug("Remote side has probably closed the socket");
-    if(close(client_sock) < 0){
-      log_debug("Could not close client socket");
-      free(reply);
-      return EXIT_FAILURE;
-    }  
+		if (close(client_sock) < 0) {
+			log_debug("Could not close client socket");
+			free(reply);
+			return EXIT_FAILURE;
+		}
 	}
 
-  free(reply);
+	free(reply);
 	return EXIT_SUCCESS;
 }
 
@@ -1248,4 +1168,3 @@ static int __pin_thread_to_core(int core)
 	return sched_setaffinity(0, sizeof(cpuset), &cpuset);
 }
 #endif
-
