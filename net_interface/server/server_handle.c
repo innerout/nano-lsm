@@ -170,7 +170,6 @@ struct tcp_rep {
 	struct par_value val;
 };
 
-struct server_handle *g_sh; // CTRL-C
 _Thread_local const char *par_error_message_tl;
 
 #define infinite_loop_start() for (;;) {
@@ -467,22 +466,30 @@ struct server_handle *server_handle_init(struct server_options *server_options)
 #else
 	sa_family_t fam = server_options->inaddr.ss_family;
 
-	if ((server_handle->sock = socket(fam, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0)) < 0)
+	if ((server_handle->sock = socket(fam, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0)) < 0) {
+		log_fatal("Failed to create socket");
 		goto cleanup;
+	}
 
 	int opt = 1;
 	setsockopt(server_handle->sock, SOL_SOCKET, SO_REUSEADDR, &opt,
 		   sizeof(opt)); /** TODO: remove, only for debug purposes! */
 
 	if (bind(server_handle->sock, (struct sockaddr *)(&server_options->inaddr),
-		 (fam == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6)) < 0)
+		 (fam == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6)) < 0) {
+		log_fatal("Failed to bind socket");
+		perror("Reason:");
 		goto cleanup;
+	}
 
 	if (listen(server_handle->sock, TT_MAX_LISTEN) < 0)
 		goto cleanup;
 #endif
-	if ((server_handle->epfd = epoll_create1(EPOLL_CLOEXEC)) < 0)
+	if ((server_handle->epfd = epoll_create1(EPOLL_CLOEXEC)) < 0) {
+		log_fatal("epoll failed");
+		perror("Reason:");
 		goto cleanup;
+	}
 
 	struct epoll_event epev = { .events = EPOLLIN | EPOLLRDHUP | EPOLLONESHOT, .data.fd = server_handle->sock };
 
@@ -926,7 +933,6 @@ static size_t par_net_get_total_bytes(char *buffer)
 static char *par_net_call_open(struct worker *worker, char *buffer, size_t *buffer_len, void *args)
 {
 	(void)args;
-	log_debug("Calling par_open");
 	struct par_net_open_rep *reply = NULL;
 	struct par_net_open_req *request = (struct par_net_open_req *)(buffer + par_net_header_calc_size());
 
@@ -938,7 +944,7 @@ static char *par_net_call_open(struct worker *worker, char *buffer, size_t *buff
 	db_options.volume_name = (char *)worker->server_handle->opts->parallax_vol_name;
 
 	const char *error_message = NULL;
-	log_debug("db name is == %s", db_options.db_name);
+	log_debug("Opening db with name == %s", db_options.db_name);
 	par_handle handle = par_open(&db_options, &error_message);
 
 	if (error_message) {
@@ -956,25 +962,25 @@ static char *par_net_call_put(struct worker *worker, char *buffer, size_t *buffe
 {
 	(void)args;
 	(void)worker;
-	log_debug("Calling par_put");
-	struct par_net_put_rep *reply;
+
 	struct par_net_put_req *request = (struct par_net_put_req *)(buffer + par_net_header_calc_size());
 
-	struct par_key_value kv = { 0 };
+	struct par_key_value kv_pair = { 0 };
 	uint64_t region_id = par_net_put_get_region_id(request);
-	kv.k.size = par_net_put_get_key_size(request);
-	kv.v.val_size = par_net_put_get_value_size(request);
-	kv.k.data = par_net_put_get_key(request);
-	kv.v.val_buffer = par_net_put_get_value(request);
-	kv.v.val_buffer_size = par_net_put_get_value_size(request);
+	kv_pair.k.size = par_net_put_get_key_size(request);
+	kv_pair.v.val_size = par_net_put_get_value_size(request);
+	kv_pair.k.data = par_net_put_get_key(request);
+	kv_pair.v.val_buffer = par_net_put_get_value(request);
+	kv_pair.v.val_buffer_size = par_net_put_get_value_size(request);
 
-	log_debug("Key size =  %lu", (unsigned long)kv.k.size);
-	log_debug("Value size = %lu", (unsigned long)kv.v.val_buffer_size);
+	// log_debug("Key size =  %lu", (unsigned long)kv_pair.k.size);
+	// log_debug("Value size = %lu", (unsigned long)kv_pair.v.val_buffer_size);
 
 	const char *error_message = NULL;
 	struct par_put_metadata metadata;
-	metadata = par_put((par_handle)region_id, &kv, &error_message);
+	metadata = par_put((par_handle)region_id, &kv_pair, &error_message);
 
+	struct par_net_put_rep *reply = NULL;
 	if (error_message) {
 		log_fatal("%s", error_message);
 		reply = par_net_put_rep_create(1, metadata, buffer_len);
@@ -989,8 +995,7 @@ static char *par_net_call_del(struct worker *worker, char *buffer, size_t *buffe
 {
 	(void)args;
 	(void)worker;
-	log_info("Calling par_delete");
-	struct par_net_del_rep *reply;
+
 	struct par_net_del_req *request = (struct par_net_del_req *)(&buffer[par_net_header_calc_size()]);
 
 	struct par_key key = { 0 };
@@ -1001,6 +1006,7 @@ static char *par_net_call_del(struct worker *worker, char *buffer, size_t *buffe
 	const char *error_message = NULL;
 	par_delete((par_handle)region_id, &key, &error_message);
 
+	struct par_net_del_rep *reply = NULL;
 	if (error_message) {
 		log_fatal("%s", error_message);
 		reply = par_net_del_rep_create(1, buffer_len);
@@ -1014,7 +1020,6 @@ static char *par_net_call_del(struct worker *worker, char *buffer, size_t *buffe
 static char *par_net_call_get(struct worker *worker, char *buffer, size_t *buffer_len, void *args)
 {
 	(void)worker;
-	log_debug("Calling par_get");
 	struct par_net_get_rep *reply;
 	struct par_net_get_req *request = (struct par_net_get_req *)(buffer + par_net_header_calc_size());
 
@@ -1029,10 +1034,10 @@ static char *par_net_call_get(struct worker *worker, char *buffer, size_t *buffe
 	par_value.val_size = params->get_buffer_size;
 	par_value.val_buffer_size = par_value.val_size;
 
-	log_debug("key size == %lu", (unsigned long)par_key.size);
+	// log_debug("key size == %lu", (unsigned long)par_key.size);
 	const char *error_message = NULL;
 	par_get((par_handle)region_id, &par_key, &par_value, &error_message);
-	log_debug("Value size == %lu", (unsigned long)par_value.val_size);
+	// log_debug("Value size == %lu", (unsigned long)par_value.val_size);
 
 	if (error_message) {
 		log_debug("%s", error_message);
@@ -1040,7 +1045,6 @@ static char *par_net_call_get(struct worker *worker, char *buffer, size_t *buffe
 		return (char *)reply;
 	}
 
-	log_debug("Key found!");
 	reply = par_net_get_rep_create(1, &par_value, buffer_len);
 	return (char *)reply;
 }
@@ -1049,7 +1053,6 @@ static char *par_net_call_close(struct worker *worker, char *buffer, size_t *buf
 {
 	(void)worker;
 	(void)args;
-	log_debug("Calling par_close");
 	struct par_net_close_rep *reply;
 	struct par_net_close_req *request = (struct par_net_close_req *)(buffer + par_net_header_calc_size());
 
@@ -1068,7 +1071,7 @@ static char *par_net_call_close(struct worker *worker, char *buffer, size_t *buf
 	return (char *)reply;
 }
 
-par_call par_net_call[MAX_OPCODE] = {
+const par_call par_net_call[MAX_OPCODE] = {
 	NULL, par_net_call_open, par_net_call_put, par_net_call_del, par_net_call_get, par_net_call_close
 };
 
@@ -1087,7 +1090,6 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
 	msg.msg_iovlen = 1;
 	msg.msg_flags = 0;
 
-	log_debug("Begin receive message");
 	ssize_t bytes_received = recvmsg(client_sock, &msg, 0);
 	if (bytes_received < 0) {
 		perror("recvmsg");
@@ -1116,7 +1118,7 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
 		bytes_received += extra_bytes_received;
 	}
 
-	log_debug("Total message size == %ld", bytes_received);
+	// log_debug("Total message size == %ld", bytes_received);
 	uint32_t opcode = par_net_header_get_opcode(worker->recv_buffer);
 
 	if (opcode == 0) {
