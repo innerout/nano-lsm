@@ -23,7 +23,7 @@ struct worker;
 
 enum par_net_op { OPCODE_OPEN = 1, OPCODE_PUT, OPCODE_DEL, OPCODE_GET, OPCODE_CLOSE };
 
-typedef char *(*par_call)(struct worker *worker, char *buffer, size_t *buffer_len, void *args);
+typedef struct par_net_header *(*par_call)(struct worker *worker, void *args);
 
 /**
   *  @brief Takes the first byte of the serialized stream and translates it to

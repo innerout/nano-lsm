@@ -106,7 +106,8 @@ size_t par_net_put_rep_calc_size(void);
  *
  * @return par_net_put_rep object
 */
-struct par_net_put_rep *par_net_put_rep_create(int status, struct par_put_metadata metadata, size_t *rep_len);
+struct par_net_put_rep *par_net_put_rep_create(int status, struct par_put_metadata metadata, char *buffer,
+					       size_t buffer_len);
 
 /**
  * @brief Takes the reply from server and gets the return value for par_put for the client
@@ -116,6 +117,6 @@ struct par_net_put_rep *par_net_put_rep_create(int status, struct par_put_metada
  * @return par_put return value
  *
 */
-struct par_put_metadata par_net_put_rep_handle_reply(char *buffer);
+struct par_put_metadata par_net_put_rep_handle_reply(struct par_net_put_rep *reply);
 
 #endif

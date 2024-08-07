@@ -83,7 +83,7 @@ size_t par_net_del_rep_calc_size(void);
  *
  * @return par_net_del_rep object
 */
-struct par_net_del_rep *par_net_del_rep_create(int status, size_t *rep_len);
+struct par_net_del_rep *par_net_del_rep_create(int status, char *buffer, size_t buffer_len);
 
 /**
  * @brief Takes the reply from server and checks if it's done correctly
@@ -91,6 +91,6 @@ struct par_net_del_rep *par_net_del_rep_create(int status, size_t *rep_len);
  * @param buffer
  *
 */
-void par_net_del_rep_handle_reply(char *buffer);
+bool par_net_del_rep_handle_reply(struct par_net_del_rep *reply);
 
 #endif

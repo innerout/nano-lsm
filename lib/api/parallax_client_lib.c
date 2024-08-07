@@ -98,16 +98,14 @@ void par_net_handle_destroy(par_handle handle)
 	free(parallax_handle);
 }
 
-char *par_net_RPC(par_handle handle, char *buffer, size_t *buffer_len)
+static ssize_t par_net_RPC(int sockfd, char *send_buffer, size_t send_buffer_len, char *recv_buffer,
+			   size_t recv_buffer_len)
 {
-	struct par_handle *client_handle = (struct par_handle *)handle;
-	int sockfd = client_handle->sockfd;
-
 	struct msghdr msg = { 0 };
 	struct iovec iov[1];
 
-	iov[0].iov_base = buffer;
-	iov[0].iov_len = *buffer_len;
+	iov[0].iov_base = send_buffer;
+	iov[0].iov_len = send_buffer_len;
 
 	msg.msg_iov = iov;
 	msg.msg_iovlen = 1;
@@ -120,14 +118,14 @@ char *par_net_RPC(par_handle handle, char *buffer, size_t *buffer_len)
 		_exit(EXIT_FAILURE);
 	}
 
-	log_debug("Total message size == %lu", bytes_sent);
+	log_debug("Message bytes sent == %lu", bytes_sent);
 
 	/* REPLY FROM SERVER */
 	struct iovec iov_reply[1];
 	struct msghdr msg_reply = { 0 };
 
-	iov_reply[0].iov_base = client_handle->recv_buffer;
-	iov_reply[0].iov_len = client_handle->recv_buffer_size;
+	iov_reply[0].iov_base = recv_buffer;
+	iov_reply[0].iov_len = recv_buffer_len;
 
 	memset(&msg_reply, 0, sizeof(msg_reply));
 	msg_reply.msg_iov = iov_reply;
@@ -142,7 +140,7 @@ char *par_net_RPC(par_handle handle, char *buffer, size_t *buffer_len)
 
 	log_debug("Total Reply size == %ld", bytes_received);
 
-	return client_handle->recv_buffer;
+	return bytes_received;
 }
 
 char *par_format(char *device_name, uint32_t max_regions_num)
@@ -156,67 +154,90 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 
 par_handle par_open(par_db_options *db_options, const char **error_message)
 {
-	struct par_handle *handle = (struct par_handle *)par_net_init();
-	size_t buffer_len =
-		par_net_open_req_calc_size(par_net_get_size(db_options->db_name)) + par_net_header_calc_size();
+	struct par_handle *parallax_handle = (struct par_handle *)par_net_init();
 
-	struct par_net_header *header = (struct par_net_header *)(handle->send_buffer);
-	header->total_bytes = buffer_len;
-	header->opcode = OPCODE_OPEN;
+	size_t msg_len = par_net_open_req_calc_size(par_net_get_size(db_options->db_name)) + par_net_header_calc_size();
 
-	char *send_buffer = &handle->send_buffer[par_net_header_calc_size()];
+	if (msg_len > parallax_handle->send_buffer_size) {
+		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
+		_exit(EXIT_FAILURE);
+	}
 
+	struct par_net_header *request_header = (struct par_net_header *)(parallax_handle->send_buffer);
+	request_header->total_bytes = msg_len;
+	request_header->opcode = OPCODE_OPEN;
+
+	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
 	struct par_net_open_req *request =
-		par_net_open_req_create(db_options->create_flag, db_options->db_name, send_buffer, &buffer_len);
+		par_net_open_req_create(db_options->create_flag, db_options->db_name,
+					&parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
 
-	char *serialized_buffer = (char *)request - par_net_header_calc_size();
+	if (NULL == request) {
+		log_fatal("Failed to create open request");
+		_exit(EXIT_FAILURE);
+	}
 
-	char *reply_buffer = par_net_RPC(handle, serialized_buffer, &buffer_len);
+	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
+					     parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
 
-	if (!reply_buffer) {
+	if (0 == bytes_received) {
 		*error_message = "Communication with server failed";
 		return NULL;
 	}
 
-	par_handle ret_handle = par_net_open_rep_handle_reply(reply_buffer);
-	handle->region_id = (uint64_t)ret_handle;
+	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
+	assert(reply_header->opcode == OPCODE_OPEN);
 
+	par_handle ret_handle =
+		par_net_open_rep_handle_reply(&parallax_handle->recv_buffer[par_net_header_calc_size()]);
 	if (!ret_handle) {
 		*error_message = "Operation (open) failed";
+		par_net_handle_destroy(parallax_handle);
 		return NULL;
 	}
+	parallax_handle->region_id = (uint64_t)ret_handle;
 
-	return (par_handle)handle;
+	return (par_handle)parallax_handle;
 }
 
 const char *par_close(par_handle handle)
 {
-	struct par_handle *close_handle = (struct par_handle *)handle;
-	size_t buffer_len = par_net_close_req_calc_size() + par_net_header_calc_size();
-
-	struct par_net_header *header = (struct par_net_header *)(close_handle->send_buffer);
-	header->total_bytes = buffer_len;
-	header->opcode = OPCODE_CLOSE;
-
-	char *send_buffer = &close_handle->send_buffer[par_net_header_calc_size()];
-	uint64_t region_id = close_handle->region_id;
-	struct par_net_close_req *request = par_net_close_req_create(region_id, send_buffer, &buffer_len);
-
-	char *serialized_buffer = (char *)request - par_net_header_calc_size();
-
-	char *reply_buffer = par_net_RPC(handle, serialized_buffer, &buffer_len);
-
-	if (!reply_buffer) {
-		return "Error with sending buffer";
+	struct par_handle *parallax_handle = (struct par_handle *)handle;
+	size_t msg_len = par_net_close_req_calc_size() + par_net_header_calc_size();
+	if (msg_len > parallax_handle->send_buffer_size) {
+		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
+		_exit(EXIT_FAILURE);
 	}
 
-	const char *error_message = par_net_close_rep_handle_reply(reply_buffer);
+	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
+	header->total_bytes = msg_len;
+	header->opcode = OPCODE_CLOSE;
+
+	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
+	struct par_net_close_req *request = par_net_close_req_create(
+		parallax_handle->region_id, &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
+	if (NULL == request) {
+		log_fatal("Failed to create close request");
+		_exit(EXIT_FAILURE);
+	}
+
+	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
+					     parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+
+	if (0 == bytes_received) {
+		return "Error with sending buffer";
+	}
+	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
+	assert(reply_header->opcode == OPCODE_CLOSE);
+	struct par_net_close_rep *reply =
+		(struct par_net_close_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
+	const char *error_message = par_net_close_rep_handle_reply(reply);
 
 	if (error_message) {
 		return error_message;
 	}
 
-	par_net_handle_destroy(close_handle);
+	par_net_handle_destroy(parallax_handle);
 	return NULL;
 }
 
@@ -242,33 +263,45 @@ enum kv_category get_kv_category(int32_t key_size, int32_t value_size, request_t
 //cppcheck-suppress constParameterPointer
 struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_value, const char **error_message)
 {
-	struct par_handle *put_handle = (struct par_handle *)handle;
-	struct par_put_metadata sample_return_value = { 0 };
+	struct par_handle *parallax_handle = (struct par_handle *)handle;
 
-	size_t buffer_len =
+	size_t msg_len =
 		par_net_put_req_calc_size(key_value->k.size, key_value->v.val_size) + par_net_header_calc_size();
 
-	struct par_net_header *header = (struct par_net_header *)(put_handle->send_buffer);
-	header->total_bytes = buffer_len;
-	header->opcode = OPCODE_PUT;
-
-	char *send_buffer = &put_handle->send_buffer[par_net_header_calc_size()];
-	log_debug("Value == %s", key_value->v.val_buffer);
-
-	struct par_net_put_req *request = par_net_put_req_create(put_handle->region_id, key_value->k.size,
-								 key_value->k.data, key_value->v.val_size,
-								 key_value->v.val_buffer, send_buffer, &buffer_len);
-
-	char *serialized_buffer = (char *)request - par_net_header_calc_size();
-
-	char *reply_buffer = par_net_RPC(handle, serialized_buffer, &buffer_len);
-
-	if (!reply_buffer) {
-		*error_message = "Communication with server failed";
-		return sample_return_value;
+	if (msg_len > parallax_handle->send_buffer_size) {
+		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
+		_exit(EXIT_FAILURE);
 	}
 
-	struct par_put_metadata metadata = par_net_put_rep_handle_reply(reply_buffer);
+	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
+
+	header->total_bytes = msg_len;
+	log_debug("PUT REQUEST: total_bytes are: %u", header->total_bytes);
+	header->opcode = OPCODE_PUT;
+
+	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
+	struct par_net_put_req *request = par_net_put_req_create(
+		parallax_handle->region_id, key_value->k.size, key_value->k.data, key_value->v.val_size,
+		key_value->v.val_buffer, &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
+	if (NULL == request) {
+		log_fatal("Failed to create put request");
+		_exit(EXIT_FAILURE);
+	}
+
+	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
+					     parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+
+	if (0 == bytes_received) {
+		*error_message = "Communication with server failed";
+		struct par_put_metadata sample_return_value = { 0 };
+		return sample_return_value;
+	}
+	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
+	assert(OPCODE_PUT == reply_header->opcode);
+	struct par_net_put_rep *reply =
+		(struct par_net_put_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
+
+	struct par_put_metadata metadata = par_net_put_rep_handle_reply(reply);
 
 	return metadata;
 }
@@ -290,27 +323,36 @@ struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_k
 // cppcheck-suppress constParameterPointer
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
 {
-	struct par_handle *get_handle = (struct par_handle *)handle;
-	size_t buffer_len = par_net_put_req_calc_size(key->size, value->val_size) + par_net_header_calc_size();
+	struct par_handle *parallax_handle = (struct par_handle *)handle;
+	size_t msg_len = par_net_put_req_calc_size(key->size, value->val_size) + par_net_header_calc_size();
+	if (msg_len > parallax_handle->send_buffer_size) {
+		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
+		_exit(EXIT_FAILURE);
+	}
 
-	struct par_net_header *header = (struct par_net_header *)(get_handle->send_buffer);
-	header->total_bytes = buffer_len;
+	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
+	header->total_bytes = msg_len;
 	header->opcode = OPCODE_GET;
 
-	char *send_buffer = &get_handle->send_buffer[par_net_header_calc_size()];
-
+	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
 	struct par_net_get_req *request =
-		par_net_get_req_create(get_handle->region_id, key->size, key->data, send_buffer, &buffer_len);
+		par_net_get_req_create(parallax_handle->region_id, key->size, key->data,
+				       &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
+	if (NULL == request) {
+		log_fatal("Failed to create get request");
+		_exit(EXIT_FAILURE);
+	}
 
-	char *serialized_buffer = (char *)request - par_net_header_calc_size();
-
-	char *reply_buffer = par_net_RPC(handle, serialized_buffer, &buffer_len);
-	if (!reply_buffer) {
+	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
+					     parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+	if (0 == bytes_received) {
 		*error_message = "Communication with server failed";
 		return;
 	}
 
-	if (par_net_get_rep_handle_reply(reply_buffer, value)) {
+	struct par_net_get_rep *reply =
+		(struct par_net_get_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
+	if (par_net_get_rep_handle_reply(reply, value)) {
 		*error_message = "Key Not found";
 	}
 }
@@ -362,29 +404,37 @@ uint64_t par_init_compaction_id(par_handle handle)
 void par_delete(par_handle handle, struct par_key *key, const char **error_message)
 {
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
-	size_t buffer_len = par_net_del_req_calc_size(key->size) + par_net_header_calc_size();
+	size_t msg_len = par_net_del_req_calc_size(key->size) + par_net_header_calc_size();
+	if (msg_len > parallax_handle->send_buffer_size) {
+		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
+		_exit(EXIT_FAILURE);
+	}
 
 	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
-	header->total_bytes = buffer_len;
+	header->total_bytes = msg_len;
 	header->opcode = OPCODE_DEL;
 
-	char *send_buffer = &parallax_handle->send_buffer[par_net_header_calc_size()];
-
+	size_t buffer_len = parallax_handle->recv_buffer_size - par_net_header_calc_size();
 	struct par_net_del_req *request =
-		par_net_del_req_create(parallax_handle->region_id, key->size, key->data, send_buffer, &buffer_len);
+		par_net_del_req_create(parallax_handle->region_id, key->size, key->data,
+				       &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
+	if (NULL == request) {
+		log_fatal("Failed to create delete request");
+		_exit(EXIT_FAILURE);
+	}
 
-	char *serialized_buffer = (char *)request - 2 * sizeof(uint32_t);
+	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
+					     parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
 
-	char *reply_buffer = par_net_RPC(handle, serialized_buffer, &buffer_len);
-
-	if (!reply_buffer) {
+	if (0 == bytes_received) {
 		*error_message = "Communication with server failed";
 		return;
 	}
-
-	par_net_del_rep_handle_reply(reply_buffer);
-
-	return;
+	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
+	assert(OPCODE_DEL == reply_header->opcode);
+	struct par_net_del_rep *delete_reply =
+		(struct par_net_del_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
+	par_net_del_rep_handle_reply(delete_reply);
 }
 
 /*scanner staff*/

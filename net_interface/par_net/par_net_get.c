@@ -9,7 +9,6 @@ struct par_net_get_req {
 struct par_net_get_rep {
 	uint32_t is_found;
 	uint32_t value_size;
-	uint32_t total_bytes;
 } __attribute__((packed));
 
 size_t par_net_get_req_calc_size(uint32_t key_size)
@@ -51,28 +50,26 @@ char *par_net_get_get_key(struct par_net_get_req *request)
 	return (char *)request + sizeof(struct par_net_get_req);
 }
 
-struct par_net_get_rep *par_net_get_rep_create(int is_found, struct par_value *v, size_t *rep_len)
+struct par_net_get_rep *par_net_get_rep_create(int is_found, struct par_value *v, char *buffer, size_t buffer_len)
 {
-	*rep_len = par_net_get_rep_calc_size(v->val_size);
-	struct par_net_get_rep *reply = malloc(*rep_len);
+	if (buffer_len < par_net_get_rep_calc_size(v->val_size)) {
+		log_warn("Sorry buffer too small to fit KV pair");
+		return NULL;
+	}
+	struct par_net_get_rep *reply = (struct par_net_get_rep *)buffer;
 
-	reply->total_bytes = *rep_len;
 	reply->is_found = is_found;
 	if (!is_found)
 		return reply;
 
-	char *reply_buffer = (char *)reply;
-	// log_debug("Val size (creating rep object) == %lu", (unsigned long)v->val_size);
 	reply->value_size = v->val_size;
+	char *reply_buffer = (char *)reply;
 	memcpy(&reply_buffer[sizeof(struct par_net_get_rep)], v->val_buffer, v->val_size);
-
 	return reply;
 }
 
-int par_net_get_rep_handle_reply(char *buffer, struct par_value *value)
+int par_net_get_rep_handle_reply(struct par_net_get_rep *reply, struct par_value *value)
 {
-	struct par_net_get_rep *reply = (struct par_net_get_rep *)buffer;
-
 	if (!reply->is_found) {
 		return 1;
 	}
@@ -82,7 +79,7 @@ int par_net_get_rep_handle_reply(char *buffer, struct par_value *value)
 
 	log_debug("val size == %lu", (unsigned long)reply->value_size);
 	value->val_buffer = calloc(1UL, value->val_size);
-
+	char *buffer = (char *)reply;
 	memcpy(value->val_buffer, &buffer[sizeof(struct par_net_get_rep)], value->val_size);
 	return 0;
 }

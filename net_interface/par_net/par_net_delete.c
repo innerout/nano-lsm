@@ -8,7 +8,7 @@ struct par_net_del_req {
 
 struct par_net_del_rep {
 	uint32_t status;
-  uint32_t total_bytes;
+	uint32_t total_bytes;
 } __attribute__((packed));
 
 size_t par_net_del_req_calc_size(uint32_t key_size)
@@ -51,24 +51,19 @@ char *par_net_del_get_key(struct par_net_del_req *request)
 	return (char *)request + sizeof(struct par_net_del_req);
 }
 
-struct par_net_del_rep *par_net_del_rep_create(int status, size_t *rep_len)
+struct par_net_del_rep *par_net_del_rep_create(int status, char *buffer, size_t buffer_len)
 {
-	struct par_net_del_rep *reply = malloc(sizeof(struct par_net_del_rep));
-	*rep_len = par_net_del_rep_calc_size();
-  
-  reply->total_bytes = *rep_len;
+	if (buffer_len < par_net_del_rep_calc_size()) {
+		log_warn("Buffer too small");
+		return NULL;
+	}
+	struct par_net_del_rep *reply = (struct par_net_del_rep *)buffer;
+
 	reply->status = status;
 	return reply;
 }
 
-void par_net_del_rep_handle_reply(char *buffer)
+bool par_net_del_rep_handle_reply(struct par_net_del_rep *reply)
 {
-	struct par_net_del_rep *reply = (struct par_net_del_rep *)buffer;
-
-	if (reply->status == 1) {
-		log_fatal("Invalid Reply status");
-		_exit(EXIT_FAILURE);
-	}
-
-	return;
+	return 1 != reply->status;
 }

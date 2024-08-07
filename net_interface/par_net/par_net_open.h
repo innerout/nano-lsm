@@ -102,7 +102,7 @@ size_t par_net_open_rep_calc_size(void);
  *
  * @return par_net_open_rep object
 */
-struct par_net_open_rep *par_net_open_rep_create(int status, par_handle handle, size_t *rep_len);
+struct par_net_open_rep *par_net_open_rep_create(int status, par_handle handle, char *buffer, size_t buffer_len);
 
 /**
  * @brief Takes the reply from server and gets the return value for par_open for the client

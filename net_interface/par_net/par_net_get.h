@@ -74,7 +74,7 @@ size_t par_net_get_rep_calc_size(uint32_t value_size);
  *
  * @return par_net_get_rep object
 */
-struct par_net_get_rep *par_net_get_rep_create(int status, struct par_value *v, size_t *rep_len);
+struct par_net_get_rep *par_net_get_rep_create(int status, struct par_value *v, char *buffer, size_t buffer_len);
 
 /**
  * @brief Takes the reply from server and checks if it's done correctly
@@ -82,6 +82,6 @@ struct par_net_get_rep *par_net_get_rep_create(int status, struct par_value *v, 
  * @param buffer
  *
 */
-int par_net_get_rep_handle_reply(char *buffer, struct par_value *v);
+int par_net_get_rep_handle_reply(struct par_net_get_rep *reply, struct par_value *v);
 
 #endif
