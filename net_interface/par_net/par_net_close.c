@@ -38,25 +38,20 @@ uint64_t par_net_close_get_region_id(struct par_net_close_req *request)
 	return request->region_id;
 }
 
-struct par_net_close_rep *par_net_close_rep_create(int status, const char *return_string, char *buffer,
-						   size_t buffer_len)
+struct par_net_close_rep *par_net_close_rep_create(const char *error_message, char *buffer, size_t buffer_len)
 {
-	uint32_t string_size = return_string ? strlen(return_string) + 1 : 0;
-	par_net_close_rep_calc_size(string_size);
+	uint32_t error_message_size = error_message ? strlen(error_message) + 1 : 0;
+	par_net_close_rep_calc_size(error_message_size);
 
-	if (buffer_len < par_net_close_rep_calc_size(string_size)) {
+	if (buffer_len < par_net_close_rep_calc_size(error_message_size)) {
 		log_warn("Buffer too small to fit a close reply");
 		_exit(EXIT_FAILURE);
 	}
 
 	struct par_net_close_rep *reply = (struct par_net_close_rep *)buffer;
-
-	reply->status = status;
-	if (status == 1)
-		return reply;
 	char *reply_buffer = (char *)reply;
-	memcpy(&reply_buffer[sizeof(struct par_net_close_rep) + string_size], return_string, string_size);
-
+	reply->status = error_message ? 1 : 0;
+	memcpy(&reply_buffer[sizeof(struct par_net_close_rep) + error_message_size], error_message, error_message_size);
 	return reply;
 }
 

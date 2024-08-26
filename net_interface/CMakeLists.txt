@@ -10,17 +10,22 @@ set(NET_LIB_SOURCE_FILES
     par_net/par_net_delete.c
     par_net/par_net_get.c
     par_net/par_net_close.c
+    par_net/par_net_scan.c
     ../lib/api/parallax_client_lib.c
     ../lib/btree/key_splice.c
     ../lib/btree/set_options.c
+    ../lib/btree/kv_pairs.c
     ../lib/common/common.c)
 
 add_library(${NET_LIB} SHARED ${NET_LIB_SOURCE_FILES})
 
-set_target_properties(${NET_LIB} PROPERTIES 
-    PUBLIC_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/../lib/include/parallax/parallax.h")
+set_target_properties(
+  ${NET_LIB}
+  PROPERTIES PUBLIC_HEADER
+             "${CMAKE_CURRENT_SOURCE_DIR}/../lib/include/parallax/parallax.h")
 
-target_include_directories(${NET_LIB} PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../lib/include")
+target_include_directories(${NET_LIB}
+                           PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../lib/include")
 
 target_link_libraries(${NET_LIB} log yaml)
 
@@ -29,5 +34,4 @@ install(
   ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
   LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
   RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-  PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-)
+  PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")

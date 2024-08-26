@@ -56,7 +56,7 @@ void scanner_seek(struct scanner *scanner, db_handle *database, void *start_key,
 			continue;
 		L0_scanner_init(&scanner->L0_scanner[tree_id], database, 0, tree_id);
 
-		if (!L0_scanner_seek(&scanner->L0_scanner[tree_id], start_key, seek_flag == GREATER))
+		if (!L0_scanner_seek(&scanner->L0_scanner[tree_id], start_key, seek_flag))
 			continue;
 
 		scanner->L0_scanner[tree_id].valid = 1;
@@ -80,7 +80,7 @@ void scanner_seek(struct scanner *scanner, db_handle *database, void *start_key,
 			continue;
 		}
 		scanner->dev_scanner[level_id] = level_scanner_dev_init(scanner->db, level_id, 0);
-		bool success = level_scanner_dev_seek(scanner->dev_scanner[level_id], start_key, seek_flag == GREATER);
+		bool success = level_scanner_dev_seek(scanner->dev_scanner[level_id], start_key, seek_flag);
 		if (!success) {
 			level_scanner_dev_close(scanner->dev_scanner[level_id]);
 			scanner->dev_scanner[level_id] = NULL;

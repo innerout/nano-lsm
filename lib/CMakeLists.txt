@@ -93,7 +93,8 @@ add_executable(
   ../net_interface/par_net/par_net_put.c
   ../net_interface/par_net/par_net_delete.c
   ../net_interface/par_net/par_net_get.c
-  ../net_interface/par_net/par_net_close.c)
+  ../net_interface/par_net/par_net_close.c
+  ../net_interface/par_net/par_net_scan.c)
 target_compile_definitions(server.${LIB} PUBLIC -DSTANDALONE_FORMAT)
 target_link_libraries(server.${LIB} PRIVATE ${LIB} ${DEPENDENCIES})
 

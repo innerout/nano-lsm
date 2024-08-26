@@ -6,6 +6,7 @@
 #include "../lib/btree/index_node.h"
 #include "../lib/btree/key_splice.h"
 #include "../lib/common/common.h"
+#include "scanner/scanner_mode.h"
 #include <assert.h>
 #include <log.h>
 #include <stdio.h>
@@ -122,6 +123,8 @@ bool L0_scanner_seek(struct L0_scanner *L0_scanner, struct key_splice *start_key
 
 	stack_push(&L0_scanner->stack, element);
 
+	log_debug("Is seek mode GREATER: %s exact match: %s", seek_mode == GREATER ? "Yes" : "NO",
+		  exact_match ? "YES" : "NO");
 	if ((seek_mode == GREATER && exact_match) || element.idx >= node->num_entries) {
 		if (!L0_scanner_get_next(L0_scanner))
 			return false;

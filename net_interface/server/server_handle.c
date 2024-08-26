@@ -2,6 +2,7 @@
 #include "server_handle.h"
 #include "../allocator/djb2.h"
 #include "../par_net/par_net.h"
+#include "../par_net/par_net_scan.h"
 #include "btree/btree.h"
 #include "btree/conf.h"
 #include "btree/kv_pairs.h"
@@ -94,7 +95,7 @@ struct par_net_header {
 	uint32_t opcode;
 };
 
-#define INITIAL_NET_BUF_SIZE KV_MAX_SIZE
+#define INITIAL_NET_BUF_SIZE (KV_MAX_SIZE * 4UL)
 
 /** server argv[] options **/
 
@@ -916,13 +917,11 @@ inline size_t par_net_header_calc_size(void)
 	return sizeof(struct par_net_header);
 }
 
-#define MAX_OPCODE 6
-
 uint32_t par_net_header_get_opcode(char *buffer)
 {
 	struct par_net_header *header = (struct par_net_header *)buffer;
 
-	if (header->opcode >= MAX_OPCODE)
+	if (header->opcode >= OPCODE_MAX)
 		return 0;
 
 	return header->opcode;
@@ -952,7 +951,7 @@ static struct par_net_header *par_net_call_open(struct worker *worker, void *arg
 
 	struct par_net_open_rep *reply = par_net_open_rep_create(error_message != NULL, handle,
 								 &worker->send_buffer[par_net_header_calc_size()],
-								 worker->send_buffer_size);
+								 worker->send_buffer_size - par_net_header_calc_size());
 	if (NULL == reply) {
 		log_warn("Failed to create reply");
 		return NULL;
@@ -1056,8 +1055,57 @@ static struct par_net_header *par_net_call_get(struct worker *worker, void *args
 	}
 	struct par_net_header *reply_header = (struct par_net_header *)worker->send_buffer;
 	reply_header->opcode = OPCODE_GET;
-	reply_header->total_bytes = par_net_header_calc_size() + par_net_get_rep_calc_size(par_value.val_size);
+	reply_header->total_bytes =
+		par_net_header_calc_size() + par_net_get_rep_calc_size(error_message == NULL ? par_value.val_size : 0);
 	return reply_header;
+}
+
+static struct par_net_header *par_net_call_scan(struct worker *worker, void *args)
+{
+	log_debug("SCAN called ....");
+	(void)args;
+	struct par_net_scan_req *request = (struct par_net_scan_req *)&worker->recv_buffer[par_net_header_calc_size()];
+	uint64_t region_id = par_net_scan_req_get_region_id(request);
+	const char *error = NULL;
+
+	const char *error_message = NULL;
+	struct par_key key = { .size = par_net_scan_req_get_key_size(request),
+			       .data = par_net_scan_req_get_key(request) };
+
+	log_debug("Scan for DB: %s seek key size:%u payload: %.*s mode is: %s",
+		  par_get_db_name((par_handle)region_id, &error), key.size, key.size, key.data,
+		  par_net_scan_req_get_seek_mode(request) == PAR_GREATER_OR_EQUAL ? "PAR_GREATER_OR_EQUAL" :
+										    "PAR_GREATER");
+
+	struct par_net_scan_rep *reply = par_net_scan_rep_create(par_net_scan_req_get_max_entries(request),
+								 &worker->send_buffer[par_net_header_calc_size()],
+								 worker->send_buffer_size - par_net_header_calc_size());
+
+	par_scanner dev_scanner =
+		par_init_scanner((par_handle)region_id, &key, par_net_scan_req_get_seek_mode(request), &error_message);
+	if (error_message) {
+		log_fatal("Error: %s", error_message);
+		_exit(EXIT_FAILURE);
+	}
+
+	while (par_is_valid(dev_scanner)) {
+		struct par_key scan_key = par_get_key(dev_scanner);
+		struct par_value scan_value = par_get_value(dev_scanner);
+		if (false == par_net_scan_rep_append_splice(reply, scan_key.size, scan_key.data, scan_value.val_size,
+							    scan_value.val_buffer))
+			break;
+		par_get_next(dev_scanner);
+	}
+	par_net_scan_rep_set_valid(reply, par_is_valid(dev_scanner));
+	par_close_scanner(dev_scanner);
+
+	struct par_net_header *header = (struct par_net_header *)worker->send_buffer;
+	header->opcode = OPCODE_SCAN;
+	header->total_bytes = par_net_header_calc_size() + par_net_scan_rep_get_size(reply);
+	log_debug("Scan entries retrieved = %u total reply size: %u max send buffer size: %lu",
+		  par_net_scan_rep_get_num_entries(reply), header->total_bytes, worker->send_buffer_size);
+	log_debug("SCAN DONE");
+	return header;
 }
 
 static struct par_net_header *par_net_call_close(struct worker *worker, void *args)
@@ -1075,7 +1123,7 @@ static struct par_net_header *par_net_call_close(struct worker *worker, void *ar
 	log_fatal("Error in par_close");
 	size_t buffer_len = worker->send_buffer_size - par_net_header_calc_size();
 	struct par_net_close_rep *reply =
-		par_net_close_rep_create(1, error_mesage, &worker->send_buffer[par_net_header_calc_size()], buffer_len);
+		par_net_close_rep_create(error_mesage, &worker->send_buffer[par_net_header_calc_size()], buffer_len);
 	if (NULL == reply) {
 		log_warn("Failed to create get reply");
 		return NULL;
@@ -1086,9 +1134,13 @@ static struct par_net_header *par_net_call_close(struct worker *worker, void *ar
 	return reply_header;
 }
 
-const par_call par_net_call[MAX_OPCODE] = {
-	NULL, par_net_call_open, par_net_call_put, par_net_call_del, par_net_call_get, par_net_call_close
-};
+const par_call par_net_call[OPCODE_MAX] = { NULL,
+					    par_net_call_open,
+					    par_net_call_put,
+					    par_net_call_del,
+					    par_net_call_get,
+					    par_net_call_close,
+					    par_net_call_scan };
 
 static int __par_handle_req(struct worker *restrict worker, int client_sock, struct tcp_req *restrict req)
 {
@@ -1112,7 +1164,7 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
 	}
 
 	size_t total_bytes = par_net_get_total_bytes(worker->recv_buffer);
-	log_debug("Total bytes of the message = %lu", total_bytes);
+	log_debug("Total bytes of  received message = %lu", total_bytes);
 
 	if (total_bytes > worker->recv_buffer_size) {
 		log_debug("Handling Larger message recv buffer size is: %lu B total_bytes are: %lu B",

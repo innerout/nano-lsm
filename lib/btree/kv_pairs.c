@@ -165,19 +165,37 @@ inline int32_t kv_splice_get_metadata_size(void)
 	return kv_pair_metadata_size;
 }
 
-struct kv_splice *kv_splice_create(int32_t key_size, const char *key, int32_t value_size, const char *value)
+inline uint32_t kv_splice_get_size(struct kv_splice *kv_pair)
 {
-	struct kv_splice *kv_splice = calloc(1UL, key_size + value_size + kv_splice_get_metadata_size());
+	return kv_splice_get_metadata_size() + kv_pair->key_size + kv_pair->value_size;
+}
+
+struct kv_splice *kv_splice_create2(int32_t key_size, const char *key, int32_t value_size, const char *value,
+				    char *buffer, int32_t buffer_len)
+{
+	int32_t size = key_size + value_size + kv_splice_get_metadata_size();
+	if (size > buffer_len) {
+		log_warn("Buffer too small size needed: %d buffer_len: %d", size, buffer_len);
+		return NULL;
+	}
+	struct kv_splice *kv_splice = (struct kv_splice *)buffer;
 	kv_splice->key_size = key_size;
 	kv_splice->value_size = value_size;
 
 	memcpy(kv_splice->data, key, key_size);
 	memcpy(&kv_splice->data[key_size], value, value_size);
+	return kv_splice;
+}
+
+struct kv_splice *kv_splice_create(int32_t key_size, const char *key, int32_t value_size, const char *value)
+{
+	int32_t buffer_len = key_size + value_size + kv_splice_get_metadata_size();
+	char *buffer = calloc(1UL, key_size + value_size + kv_splice_get_metadata_size());
+	struct kv_splice *kv_splice = kv_splice_create2(key_size, key, value_size, value, buffer, buffer_len);
 #if TEBIS_FORMAT
 	set_sizes_tail(kv_splice, INT8_MAX);
 	set_payload_tail(kv_splice, INT8_MAX);
 #endif
-
 	return kv_splice;
 }
 

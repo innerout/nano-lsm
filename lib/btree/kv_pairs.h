@@ -154,6 +154,24 @@ void kv_splice_serialize(const struct kv_splice *splice, char *dest);
 struct kv_splice *kv_splice_create(int32_t key_size, const char *key, int32_t value_size, const char *value);
 
 /**
+ * @brief Calculates the size in bytes of the given kv_splice.
+ * @param kv_pair pointer to the kv_splice object
+ * @returns the size of the splice in bytes
+ */
+uint32_t kv_splice_get_size(struct kv_splice *kv_pair);
+
+/**
+ * @brief Creates a splice using as memory space the given buffer.
+ * @param key_size the size of the key
+ * @param key pointer to the key object
+ * @param value_size the size of the value
+ * @param value pointer to the value object
+ * @return pointer to the kv_splice object or NULL if the buffer space is not enough
+ *
+ */
+struct kv_splice *kv_splice_create2(int32_t key_size, const char *key, int32_t value_size, const char *value,
+				    char *buffer, int32_t buffer_len);
+/**
  * Calculates key_size given a splice formated key
  * @param kv_pair key a KV_FORMATED key
  * @return key size

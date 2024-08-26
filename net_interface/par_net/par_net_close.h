@@ -59,8 +59,7 @@ size_t par_net_close_rep_calc_size(uint32_t string_size);
  *
  * @return par_net_close_rep object
 */
-struct par_net_close_rep *par_net_close_rep_create(int status, const char *return_string, char *buffer,
-						   size_t buffer_len);
+struct par_net_close_rep *par_net_close_rep_create(const char *error_message, char *buffer, size_t buffer_len);
 
 /**
   * @brief getter for the par_close error_messsge string
