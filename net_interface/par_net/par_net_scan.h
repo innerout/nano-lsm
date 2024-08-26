@@ -45,5 +45,7 @@ bool par_net_scan_rep_seek2_next_splice(struct par_net_scan_rep *reply);
 
 struct kv_splice *par_net_scan_rep_get_last_splice(struct par_net_scan_rep *reply);
 
+struct kv_splice *par_net_scan_rep_get_curr_splice(struct par_net_scan_rep *reply);
+
 struct kv_splice *par_net_scan_rep(struct par_net_scan_rep *reply);
 #endif

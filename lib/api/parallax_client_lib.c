@@ -291,7 +291,6 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
 
 	header->total_bytes = msg_len;
-	log_debug("PUT REQUEST: total_bytes are: %u", header->total_bytes);
 	header->opcode = OPCODE_PUT;
 
 	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
@@ -481,9 +480,9 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 		_exit(EXIT_FAILURE);
 	}
 
-	log_debug("Sending SCAN request to fetch next batch... %s mode with key: %.*s",
-		  mode == PAR_GREATER_OR_EQUAL ? "PAR_GREATER_OR_EQUAL" : "PAR_GREATER", key ? key->size : 4,
-		  key ? key->data : "NULL");
+	// log_debug("Sending SCAN request to fetch next batch... %s mode with key: %.*s",
+	// 	  mode == PAR_GREATER_OR_EQUAL ? "PAR_GREATER_OR_EQUAL" : "PAR_GREATER", key ? key->size : 4,
+	// 	  key ? key->data : "NULL");
 
 	struct par_net_header *header = (struct par_net_header *)parallax_scanner->send_buffer;
 	header->opcode = OPCODE_SCAN;
@@ -491,7 +490,7 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 	par_net_RPC(parallax_scanner->parallax_handle->sockfd, parallax_scanner->send_buffer, header->total_bytes,
 		    &parallax_scanner->recv_buffer, parallax_scanner->recv_buffer_size);
 
-	log_debug("Sending SCAN request to fetch next batch ... D O N E");
+	// log_debug("Sending SCAN request to fetch next batch ... D O N E");
 	//-- reply part
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_scanner->recv_buffer;
 	assert(reply_header->opcode == OPCODE_SCAN);
@@ -510,7 +509,6 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 // cppcheck-suppress constParameterPointer
 par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mode mode, const char **error_message)
 {
-	log_debug("Initiliazing scanner...");
 	struct parallax_scanner *scanner = calloc(1UL, sizeof(struct parallax_scanner));
 	scanner->send_buffer_size = PAR_SCAN_SEND_BUFFER_SIZE;
 	scanner->recv_buffer_size = PAR_SCAN_RECV_BUFFER_SIZE;
@@ -519,8 +517,8 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 	scanner->parallax_handle = handle;
 	scanner->max_KV_pairs = PAR_SCAN_MAX_KV_ENTRIES;
 	scanner->parallax_handle = handle;
-	log_debug("Requesting from server for the 1st batch of KV pairs... key is: %.*s", key == NULL ? 4 : key->size,
-		  key == NULL ? "NULL" : key->data);
+	// log_debug("Requesting from server for the 1st batch of KV pairs... key is: %.*s", key == NULL ? 4 : key->size,
+	// 	  key == NULL ? "NULL" : key->data);
 	scanner->reply = par_scan_get_next_batch(scanner, mode, key);
 	if (NULL == scanner->reply) {
 		log_fatal("Failed to fetch 1st batch of KV pairs from the server");
@@ -529,7 +527,6 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 		return NULL;
 	}
 	par_net_scan_rep_seek2_to_first(scanner->reply);
-	log_debug("Initiliazing scanner... D O N E");
 	return scanner;
 }
 
@@ -551,7 +548,6 @@ int par_get_next(par_scanner sc)
 		parallax_scanner->reply = par_scan_get_next_batch(parallax_scanner, PAR_GREATER, &key);
 		return par_net_scan_rep_seek2_to_first(parallax_scanner->reply);
 	}
-	log_debug("Ok have another kv_pair locally");
 	return true;
 }
 
@@ -563,19 +559,26 @@ int par_is_valid(par_scanner sc)
 
 struct par_key par_get_key(par_scanner sc)
 {
-	log_fatal("Unimplemented");
-	_exit(EXIT_FAILURE);
 	struct par_key key = { 0 };
-	(void)sc;
+	struct parallax_scanner *parallax_scanner = sc;
+	if (NULL == parallax_scanner->reply)
+		return key;
+	struct kv_splice *kv_splice = par_net_scan_rep_get_curr_splice(parallax_scanner->reply);
+	key.size = kv_splice_get_key_size(kv_splice);
+	key.data = kv_splice_get_key_offset_in_kv(kv_splice);
 	return key;
 }
 
 struct par_value par_get_value(par_scanner sc)
 {
-	log_fatal("Unimplemented");
-	_exit(EXIT_FAILURE);
 	struct par_value value = { 0 };
-	(void)sc;
+	struct parallax_scanner *parallax_scanner = sc;
+	if (NULL == parallax_scanner->reply)
+		return value;
+	struct kv_splice *kv_splice = par_net_scan_rep_get_curr_splice(parallax_scanner->reply);
+	value.val_size = kv_splice_get_value_size(kv_splice);
+	value.val_buffer = kv_splice_get_key_offset_in_kv(kv_splice);
+	return value;
 	return value;
 }
 

@@ -263,7 +263,9 @@ static void scan_workload(struct workload_config_t *workload_config)
 				  my_keyptr.size, my_keyptr.data);
 			_exit(EXIT_FAILURE);
 		}
-		memset((void *)my_keyptr.data, 0x00, my_keyptr.size);
+		// log_debug("Success for key %s found scanner instead returned %d:%s", k->key_buf, my_keyptr.size,
+		// 	  my_keyptr.data);
+		// memset((void *)my_keyptr.data, 0x00, my_keyptr.size);
 
 		uint64_t scan_entries = 0;
 		for (uint64_t j = i + 2 + expected_offset; scan_entries < workload_config->scan_size;

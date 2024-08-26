@@ -1062,7 +1062,6 @@ static struct par_net_header *par_net_call_get(struct worker *worker, void *args
 
 static struct par_net_header *par_net_call_scan(struct worker *worker, void *args)
 {
-	log_debug("SCAN called ....");
 	(void)args;
 	struct par_net_scan_req *request = (struct par_net_scan_req *)&worker->recv_buffer[par_net_header_calc_size()];
 	uint64_t region_id = par_net_scan_req_get_region_id(request);
@@ -1072,10 +1071,10 @@ static struct par_net_header *par_net_call_scan(struct worker *worker, void *arg
 	struct par_key key = { .size = par_net_scan_req_get_key_size(request),
 			       .data = par_net_scan_req_get_key(request) };
 
-	log_debug("Scan for DB: %s seek key size:%u payload: %.*s mode is: %s",
-		  par_get_db_name((par_handle)region_id, &error), key.size, key.size, key.data,
-		  par_net_scan_req_get_seek_mode(request) == PAR_GREATER_OR_EQUAL ? "PAR_GREATER_OR_EQUAL" :
-										    "PAR_GREATER");
+	// log_debug("Scan for DB: %s seek key size:%u payload: %.*s mode is: %s",
+	// 	  par_get_db_name((par_handle)region_id, &error), key.size, key.size, key.data,
+	// 	  par_net_scan_req_get_seek_mode(request) == PAR_GREATER_OR_EQUAL ? "PAR_GREATER_OR_EQUAL" :
+	// 									    "PAR_GREATER");
 
 	struct par_net_scan_rep *reply = par_net_scan_rep_create(par_net_scan_req_get_max_entries(request),
 								 &worker->send_buffer[par_net_header_calc_size()],
@@ -1102,9 +1101,8 @@ static struct par_net_header *par_net_call_scan(struct worker *worker, void *arg
 	struct par_net_header *header = (struct par_net_header *)worker->send_buffer;
 	header->opcode = OPCODE_SCAN;
 	header->total_bytes = par_net_header_calc_size() + par_net_scan_rep_get_size(reply);
-	log_debug("Scan entries retrieved = %u total reply size: %u max send buffer size: %lu",
-		  par_net_scan_rep_get_num_entries(reply), header->total_bytes, worker->send_buffer_size);
-	log_debug("SCAN DONE");
+	// log_debug("Scan DONE entries retrieved = %u total reply size: %u max send buffer size: %lu",
+	// 	  par_net_scan_rep_get_num_entries(reply), header->total_bytes, worker->send_buffer_size);
 	return header;
 }
 
@@ -1164,7 +1162,7 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
 	}
 
 	size_t total_bytes = par_net_get_total_bytes(worker->recv_buffer);
-	log_debug("Total bytes of  received message = %lu", total_bytes);
+	// log_debug("Total bytes of  received message = %lu", total_bytes);
 
 	if (total_bytes > worker->recv_buffer_size) {
 		log_debug("Handling Larger message recv buffer size is: %lu B total_bytes are: %lu B",

@@ -77,7 +77,7 @@ int par_net_get_rep_handle_reply(struct par_net_get_rep *reply, struct par_value
 	value->val_size = reply->value_size;
 	value->val_buffer_size = reply->value_size;
 
-	log_debug("val size == %lu", (unsigned long)reply->value_size);
+	// log_debug("val size == %lu", (unsigned long)reply->value_size);
 	value->val_buffer = calloc(1UL, value->val_size);
 	char *buffer = (char *)reply;
 	memcpy(value->val_buffer, &buffer[sizeof(struct par_net_get_rep)], value->val_size);

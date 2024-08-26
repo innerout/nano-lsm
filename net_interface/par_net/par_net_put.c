@@ -38,8 +38,8 @@ struct par_net_put_req *par_net_put_req_create(uint64_t region_id, uint32_t key_
 	memcpy(&buffer[sizeof(struct par_net_put_req)], key, key_size);
 	memcpy(&buffer[sizeof(struct par_net_put_req) + key_size], value, value_size);
 
-	log_debug("Key size %lu", (unsigned long)key_size);
-	log_debug("Value size %lu", (unsigned long)value_size);
+	// log_debug("Key size %lu", (unsigned long)key_size);
+	// log_debug("Value size %lu", (unsigned long)value_size);
 
 	return request;
 }
