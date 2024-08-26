@@ -151,7 +151,7 @@ static par_handle par_net_init(const char *parallax_host)
 	handle->send_buffer = calloc(1UL, KV_MAX_SIZE);
 	handle->recv_buffer_size = KV_MAX_SIZE;
 	handle->send_buffer_size = KV_MAX_SIZE;
-
+	free(hostname);
 	return (par_handle)handle;
 }
 
@@ -160,6 +160,9 @@ void par_net_handle_destroy(par_handle handle)
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
 	free(parallax_handle->recv_buffer);
 	free(parallax_handle->send_buffer);
+	if (parallax_handle->configuration[PARALLAX_SERVER].value)
+		free((void *)parallax_handle->configuration[PARALLAX_SERVER].value);
+	free(parallax_handle->configuration);
 	free(parallax_handle);
 }
 
