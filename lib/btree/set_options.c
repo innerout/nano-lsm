@@ -25,18 +25,39 @@
 
 #define CONFIG_FILE DB_CONFIG_FILE
 
+/**
+ * @brief Checks if the token is a number or a string and stores it in the
+ * corresponding field of struct lib_option.
+ * @param token pointer to the yaml token
+ * @param lib_option pointer to the lib_option object
+ */
+static void parse_value(yaml_token_t token, struct lib_option *lib_option)
+{
+	char *pEnd = NULL;
+	// Attempt to convert the value to a number
+	uint64_t num = strtoull((char *)token.data.scalar.value, &pEnd, 10);
+
+	if (pEnd == (char *)token.data.scalar.value || *pEnd != '\0') {
+		lib_option->value.name = strdup((char *)token.data.scalar.value);
+		lib_option->type = STR;
+	} else {
+		lib_option->value.count = num;
+		lib_option->type = LL;
+	}
+}
+#define PARSE_MAX_PROPERTIES 128
 int parse_options(struct lib_option **db_options)
 {
-	struct lib_option options[128];
-	FILE *fh = fopen(CONFIG_FILE, "r");
-	char *pEnd;
+	log_debug("Reading Configuration file: %s", CONFIG_FILE);
+	struct lib_option options[PARSE_MAX_PROPERTIES];
+	FILE *file_handle = fopen(CONFIG_FILE, "r");
 	yaml_parser_t parser;
 	yaml_token_t token;
 	int count = 0;
-	int i = 0;
+	int num_options = 0;
 
 	if (access(CONFIG_FILE, F_OK)) {
-		log_fatal("%s does not exist.", CONFIG_FILE);
+		log_fatal("Configuration file: %s does not exist.", CONFIG_FILE);
 		BUG_ON();
 	}
 
@@ -45,12 +66,12 @@ int parse_options(struct lib_option **db_options)
 		BUG_ON();
 	}
 
-	if (fh == NULL) {
+	if (file_handle == NULL) {
 		log_fatal("Failed to open file!");
 		BUG_ON();
 	}
 
-	yaml_parser_set_input_file(&parser, fh);
+	yaml_parser_set_input_file(&parser, file_handle);
 
 	do {
 		yaml_parser_scan(&parser, &token);
@@ -83,11 +104,11 @@ int parse_options(struct lib_option **db_options)
 			break;
 		case YAML_SCALAR_TOKEN:
 			if (count == 1) {
-				options[i].name = strdup((char *)token.data.scalar.value);
-				/* log_info("Key %s", options[i].name); */
+				options[num_options].name = strdup((char *)token.data.scalar.value);
 			} else {
-				options[i++].value.count = strtoull((char *)token.data.scalar.value, &pEnd, 10);
-				/* log_info("value %llu", options[i - 1].value.count); */
+				parse_value(token, &options[num_options++]);
+				// options[i++].value.count = strtoull((char *)token.data.scalar.value, &pEnd, 10);
+				// log_debug("value %llu", options[i - 1].value.count);
 				count = 0;
 			}
 
@@ -105,12 +126,14 @@ int parse_options(struct lib_option **db_options)
 	yaml_token_delete(&token);
 
 	yaml_parser_delete(&parser);
-	fclose(fh);
+	fclose(file_handle);
 
-	for (int j = 0; j < i; ++j) {
-		struct lib_option *temp = malloc(sizeof(struct lib_option));
-		memcpy(temp, &options[j], sizeof(struct lib_option));
-		HASH_ADD_STR(*db_options, name, temp);
+	for (int i = 0; i < num_options; ++i) {
+		struct lib_option *option = calloc(1UL, sizeof(struct lib_option));
+		memcpy(option, &options[i], sizeof(struct lib_option));
+		// log_debug("Adding option: %s from configuration file: %s value: %s", option->name, CONFIG_FILE,
+		// 	  option->type == STR ? option->value.name : "NUMERICAL");
+		HASH_ADD_STR(*db_options, name, option);
 	}
 
 #if ENABLE_OPTIONS_OUTPUT
@@ -127,7 +150,7 @@ void check_option(const struct lib_option *db_options, const char *option_name, 
 {
 	HASH_FIND_STR(db_options, option_name, *opt_value);
 
-	if (!*opt_value) {
+	if (NULL == *opt_value) {
 		log_fatal("Cannot find %s option", option_name);
 		BUG_ON();
 	}
@@ -144,7 +167,7 @@ static void write_options(struct lib_option *db_options)
 		fprintf(f, "%s %llu\n", current_option->name, current_option->value.count);
 	}
 }
-
+#endif
 void destroy_options(struct lib_option *db_options)
 {
 	struct lib_option *current_option, *tmp;
@@ -156,4 +179,3 @@ void destroy_options(struct lib_option *db_options)
 		free(current_option); /* optional- if you want to free  */
 	}
 }
-#endif

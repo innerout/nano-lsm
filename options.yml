@@ -10,3 +10,4 @@ replica_send_index: 0
 enable_bloom_filters: 1
 enable_compaction_double_buffering: 1
 number_of_replicas: 1
+parallax_server: localhost:8080

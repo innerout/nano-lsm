@@ -22,6 +22,7 @@
 #include "../scanner/scanner.h"
 
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -45,6 +46,7 @@ struct par_handle {
 	int sockfd;
 	uint32_t recv_buffer_size;
 	uint32_t send_buffer_size;
+	struct par_options_desc *configuration;
 };
 
 struct par_net_header {
@@ -57,15 +59,79 @@ size_t par_net_header_calc_size(void)
 	return sizeof(struct par_net_header);
 }
 
-static par_handle par_net_init(void)
+static bool par_split_hostname_port(const char *input, char **hostname, int *port)
+{
+	char *colon_pos = strchr(input, ':');
+	if (colon_pos == NULL) {
+		// No colon found in the input string
+		return -1;
+	}
+
+	// Calculate the length of the hostname
+	size_t hostname_len = colon_pos - input;
+
+	// Allocate memory for the hostname and copy it
+	*hostname = (char *)calloc(1UL, hostname_len + 1);
+	if (*hostname == NULL) {
+		return -1;
+	}
+	strncpy(*hostname, input, hostname_len);
+
+	// Convert the port part to an integer using strtol
+	char *endptr = NULL;
+	long port_long = strtol(colon_pos + 1, &endptr, 10);
+
+	// Check if the conversion was successful and the entire string was valid
+	if (*endptr != '\0' || port_long < 0 || port_long > 65535) {
+		free(*hostname);
+		return false; // Invalid port number
+	}
+
+	*port = (int)port_long;
+
+	return true;
+}
+/**
+ * @brief Initializes connections to the Parallax server.
+ * @param hostname pointer to the hostname of the server
+ * in the form <hostname>:<port>
+ * @return a new par_handle
+ */
+static par_handle par_net_init(const char *parallax_host)
 {
 	struct par_handle *handle = calloc(1UL, sizeof(struct par_handle));
+	char *hostname = NULL;
+	int port = 0;
 
-	struct sockaddr_in server_addr;
+	if (false == par_split_hostname_port(parallax_host, &hostname, &port)) {
+		log_fatal("Failed to parse parallax server hostname: %s must be in <hostname>:<port> notation",
+			  parallax_host);
+		_exit(EXIT_FAILURE);
+	}
+	log_debug("Connecting to Parallax server: %s:%d", hostname, port);
 
+	struct sockaddr_in server_addr = { 0 };
 	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(8080);
-	server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	server_addr.sin_port = htons(port);
+	//Resolve IP from hostname
+	memset(&server_addr, 0, sizeof(server_addr));
+	server_addr.sin_family = AF_INET;
+	server_addr.sin_port = htons(port);
+
+	struct addrinfo hints = { 0 };
+	struct addrinfo *res = NULL;
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET; // AF_INET for IPv4
+
+	if (getaddrinfo(hostname, NULL, &hints, &res) != 0) {
+		log_fatal("Failed to resove host: %s to an IP!", hostname);
+		perror("getaddrinfo failed");
+		_exit(EXIT_FAILURE);
+	}
+
+	server_addr.sin_addr = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
+
+	freeaddrinfo(res);
 
 	int sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (sockfd < 0) {
@@ -76,7 +142,7 @@ static par_handle par_net_init(void)
 
 	if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
 		perror("TCP_CLIENT_CONNECT");
-		log_error("Could not connect to server");
+		log_error("Could not connect to server: %s", parallax_host);
 		_exit(EXIT_FAILURE);
 	}
 
@@ -169,7 +235,9 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 
 par_handle par_open(par_db_options *db_options, const char **error_message)
 {
-	struct par_handle *parallax_handle = (struct par_handle *)par_net_init();
+	struct par_options_desc *configuration = par_get_default_options();
+	struct par_handle *parallax_handle =
+		(struct par_handle *)par_net_init((const char *)configuration[PARALLAX_SERVER].value);
 
 	size_t msg_len = par_net_open_req_calc_size(par_net_get_size(db_options->db_name)) + par_net_header_calc_size();
 
@@ -211,6 +279,7 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 		return NULL;
 	}
 	parallax_handle->region_id = (uint64_t)ret_handle;
+	parallax_handle->configuration = configuration;
 
 	return (par_handle)parallax_handle;
 }
@@ -533,6 +602,8 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 void par_close_scanner(par_scanner sc)
 {
 	struct parallax_scanner *parallax_scanner = (struct parallax_scanner *)sc;
+	free(parallax_scanner->send_buffer);
+	free(parallax_scanner->recv_buffer);
 	free(parallax_scanner);
 }
 
@@ -594,51 +665,53 @@ par_ret_code par_sync(par_handle handle)
 
 struct par_options_desc *par_get_default_options(void)
 {
-	struct par_options_desc *default_db_options =
-		(struct par_options_desc *)calloc(NUM_OF_CONFIGURATION_OPTIONS, sizeof(struct par_options_desc));
-
 	// parse the options from options.yml config file
-	struct lib_option *dboptions = NULL;
-	parse_options(&dboptions);
+	struct lib_option *db_options = NULL;
+	parse_options(&db_options);
 
 	struct lib_option *option = NULL;
 	/*get the default db option values */
-	check_option(dboptions, "level0_size", &option);
+	check_option(db_options, "level0_size", &option);
 	uint64_t level0_size = MB(option->value.count);
 
-	check_option(dboptions, "growth_factor", &option);
+	check_option(db_options, "growth_factor", &option);
 	uint64_t growth_factor = option->value.count;
 
-	check_option(dboptions, "level_medium_inplace", &option);
+	check_option(db_options, "level_medium_inplace", &option);
 	uint64_t level_medium_inplace = option->value.count;
 
-	check_option(dboptions, "medium_log_LRU_cache_size", &option);
+	check_option(db_options, "medium_log_LRU_cache_size", &option);
 	uint64_t LRU_cache_size = MB(option->value.count);
 
-	check_option(dboptions, "gc_interval", &option);
+	check_option(db_options, "gc_interval", &option);
 	uint64_t gc_interval = option->value.count;
 
-	check_option(dboptions, "primary_mode", &option);
+	check_option(db_options, "primary_mode", &option);
 	uint64_t primary_mode = option->value.count;
 
-	check_option(dboptions, "replica_mode", &option);
+	check_option(db_options, "replica_mode", &option);
 	uint64_t replica_mode = 0;
 
-	check_option(dboptions, "replica_build_index", &option);
+	check_option(db_options, "replica_build_index", &option);
 	uint64_t replica_build_index = option->value.count;
 
-	check_option(dboptions, "replica_send_index", &option);
+	check_option(db_options, "replica_send_index", &option);
 	uint64_t replica_send_index = option->value.count;
 
-	check_option(dboptions, "enable_bloom_filters", &option);
+	check_option(db_options, "enable_bloom_filters", &option);
 	uint64_t enable_bloom_filters = option->value.count;
 
-	check_option(dboptions, "enable_compaction_double_buffering", &option);
+	check_option(db_options, "enable_compaction_double_buffering", &option);
 	uint64_t enable_compaction_double_buffering = option->value.count;
 
-	check_option(dboptions, "number_of_replicas", &option);
+	check_option(db_options, "number_of_replicas", &option);
 	uint64_t number_of_replicas = option->value.count;
 
+	check_option(db_options, "parallax_server", &option);
+	const char *parallax_server = strdup(option->value.name);
+
+	struct par_options_desc *default_db_options =
+		(struct par_options_desc *)calloc(NUM_OF_CONFIGURATION_OPTIONS, sizeof(struct par_options_desc));
 	//fill default_db_options based on the default values
 	default_db_options[LEVEL0_SIZE].value = level0_size;
 	default_db_options[GROWTH_FACTOR].value = growth_factor;
@@ -653,7 +726,9 @@ struct par_options_desc *par_get_default_options(void)
 	default_db_options[REPLICA_BUILD_INDEX].value = replica_build_index;
 	default_db_options[REPLICA_SEND_INDEX].value = replica_send_index;
 	default_db_options[WCURSOR_SPIN_FOR_FLUSH_REPLIES].value = 0;
-
+	default_db_options[PARALLAX_SERVER].value = (uint64_t)parallax_server;
+	log_debug("PARALLAX_SERVER_HOSTNAME is: %s", parallax_server);
+	destroy_options(db_options);
 	return default_db_options;
 }
 

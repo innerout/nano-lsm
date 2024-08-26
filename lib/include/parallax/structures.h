@@ -44,6 +44,7 @@ typedef enum {
 	// and following the *Tebis* logic
 	REPLICA_BUILD_INDEX,
 	REPLICA_SEND_INDEX,
+	PARALLAX_SERVER, //Optional hostname of the Parallax server in the form <hostname:port>
 	NUM_OF_CONFIGURATION_OPTIONS
 } par_options;
 
