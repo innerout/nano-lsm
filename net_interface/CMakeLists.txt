@@ -11,6 +11,7 @@ set(NET_LIB_SOURCE_FILES
     par_net/par_net_get.c
     par_net/par_net_close.c
     par_net/par_net_scan.c
+    par_net/par_net_sync.c
     ../lib/api/parallax_client_lib.c
     ../lib/btree/key_splice.c
     ../lib/btree/set_options.c

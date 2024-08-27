@@ -21,7 +21,16 @@
 #include "par_net_put.h"
 struct worker;
 
-enum par_net_op { OPCODE_OPEN = 1, OPCODE_PUT, OPCODE_DEL, OPCODE_GET, OPCODE_CLOSE, OPCODE_SCAN, OPCODE_MAX };
+enum par_net_op {
+	OPCODE_OPEN = 1,
+	OPCODE_PUT,
+	OPCODE_DEL,
+	OPCODE_GET,
+	OPCODE_CLOSE,
+	OPCODE_SCAN,
+	OPCODE_SYNC,
+	OPCODE_MAX
+};
 typedef struct par_net_header *(*par_call)(struct worker *worker, void *args);
 
 /**

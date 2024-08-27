@@ -3,6 +3,7 @@
 #include "../allocator/djb2.h"
 #include "../par_net/par_net.h"
 #include "../par_net/par_net_scan.h"
+#include "../par_net/par_net_sync.h"
 #include "btree/btree.h"
 #include "btree/conf.h"
 #include "btree/kv_pairs.h"
@@ -1060,12 +1061,31 @@ static struct par_net_header *par_net_call_get(struct worker *worker, void *args
 	return reply_header;
 }
 
+static struct par_net_header *par_net_call_sync(struct worker *worker, void *args)
+{
+	(void)args;
+	struct par_net_sync_req *sync_request =
+		(struct par_net_sync_req *)&worker->recv_buffer[par_net_header_calc_size()];
+	uint64_t region_id = par_net_sync_req_get_region_id(sync_request);
+	par_ret_code ret = par_sync((par_handle)region_id);
+	struct par_net_sync_rep *sync_reply =
+		par_net_sync_rep_create(ret, region_id, &worker->send_buffer[par_net_header_calc_size()],
+					worker->send_buffer_size - par_net_header_calc_size());
+	if (NULL == sync_reply) {
+		log_fatal("Failed to create sync reply");
+		_exit(EXIT_FAILURE);
+	}
+	struct par_net_header *reply = (struct par_net_header *)worker->send_buffer;
+	reply->opcode = OPCODE_SYNC;
+	reply->total_bytes = par_net_header_calc_size() + par_net_sync_rep_calc_size();
+	return reply;
+}
+
 static struct par_net_header *par_net_call_scan(struct worker *worker, void *args)
 {
 	(void)args;
 	struct par_net_scan_req *request = (struct par_net_scan_req *)&worker->recv_buffer[par_net_header_calc_size()];
 	uint64_t region_id = par_net_scan_req_get_region_id(request);
-	const char *error = NULL;
 
 	const char *error_message = NULL;
 	struct par_key key = { .size = par_net_scan_req_get_key_size(request),
@@ -1138,7 +1158,8 @@ const par_call par_net_call[OPCODE_MAX] = { NULL,
 					    par_net_call_del,
 					    par_net_call_get,
 					    par_net_call_close,
-					    par_net_call_scan };
+					    par_net_call_scan,
+					    par_net_call_sync };
 
 static int __par_handle_req(struct worker *restrict worker, int client_sock, struct tcp_req *restrict req)
 {

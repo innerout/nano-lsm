@@ -19,6 +19,7 @@
 #include "../net_interface/par_net/par_net_open.h"
 #include "../net_interface/par_net/par_net_put.h"
 #include "../net_interface/par_net/par_net_scan.h"
+#include "../net_interface/par_net/par_net_sync.h"
 #include "../scanner/scanner.h"
 
 #include <arpa/inet.h>
@@ -659,10 +660,30 @@ struct par_value par_get_value(par_scanner sc)
 // cppcheck-suppress unusedFunction
 par_ret_code par_sync(par_handle handle)
 {
-	log_fatal("Unimplemented");
-	_exit(EXIT_FAILURE);
-	par_ret_code ret_val = { 0 };
-	(void)handle;
+	struct par_handle *parallax_handle = (struct par_handle *)handle;
+	struct par_net_sync_req *sync_request = par_net_sync_req_create(
+		parallax_handle->region_id, &parallax_handle->send_buffer[par_net_header_calc_size()],
+		parallax_handle->send_buffer_size - par_net_header_calc_size());
+	if (NULL == sync_request) {
+		log_fatal("Failed to create par_net_sync_req request");
+		_exit(EXIT_FAILURE);
+	}
+	struct par_net_header *request = (struct par_net_header *)parallax_handle->send_buffer;
+	request->opcode = OPCODE_SYNC;
+	request->total_bytes = par_net_header_calc_size() + par_net_sync_req_calc_size();
+
+	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer,
+					     request->total_bytes, &parallax_handle->recv_buffer,
+					     parallax_handle->recv_buffer_size);
+	struct par_net_header *reply = (struct par_net_header *)parallax_handle->recv_buffer;
+	assert(reply->total_bytes == bytes_received);
+	struct par_net_sync_rep *sync_reply =
+		(struct par_net_sync_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
+	par_ret_code ret_val = PAR_SUCCESS;
+	if (par_net_sync_rep_get_status(sync_reply)) {
+		log_warn("Sync failed");
+		ret_val = PAR_FAILURE;
+	}
 	return ret_val;
 }
 
