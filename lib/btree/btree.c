@@ -587,7 +587,8 @@ const char *db_close(db_handle *handle)
 		BUG_ON();
 	}
 	if (handle->db_desc->reference_count > 0) {
-		error_message = "Sorry more guys use this DB";
+		error_message = NULL;
+		log_debug("More guys use the DB");
 		MUTEX_UNLOCK(&init_lock);
 		return error_message;
 	}

@@ -1145,6 +1145,7 @@ static struct par_net_header *par_net_call_close(struct worker *worker, void *ar
 	par_handle handle = (par_handle)region_id;
 
 	const char *error_mesage = par_close(handle);
+	log_debug("Close DB message is %s ", error_mesage ? error_mesage : " OK !");
 	uint32_t error_message_size = error_mesage ? strlen(error_mesage) + 1 : 0;
 	size_t buffer_len = worker->send_buffer_size - par_net_header_calc_size();
 	struct par_net_close_rep *reply =
