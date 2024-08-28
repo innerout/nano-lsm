@@ -158,7 +158,12 @@ static par_handle par_net_init(const char *parallax_host)
 
 void par_net_handle_destroy(par_handle handle)
 {
+	log_debug("Destroying handle Bye Bye");
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
+	if (close(parallax_handle->sockfd) < 0) {
+		log_fatal("Failed to close the socket");
+		_exit(EXIT_FAILURE);
+	}
 	free(parallax_handle->recv_buffer);
 	free(parallax_handle->send_buffer);
 	if (parallax_handle->configuration[PARALLAX_SERVER].value)
@@ -239,6 +244,7 @@ char *par_format(char *device_name, uint32_t max_regions_num)
 
 par_handle par_open(par_db_options *db_options, const char **error_message)
 {
+	log_info("OPEN DB with name: %s", db_options->db_name);
 	struct par_options_desc *configuration = par_get_default_options();
 	struct par_handle *parallax_handle =
 		(struct par_handle *)par_net_init((const char *)configuration[PARALLAX_SERVER].value);
@@ -285,11 +291,13 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	parallax_handle->region_id = (uint64_t)ret_handle;
 	parallax_handle->configuration = configuration;
 
+	log_info("OPEN DB with name: %s ... DONE", db_options->db_name);
 	return (par_handle)parallax_handle;
 }
 
 const char *par_close(par_handle handle)
 {
+	log_info("CLOSE operation ...");
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
 	size_t msg_len = par_net_close_req_calc_size() + par_net_header_calc_size();
 	if (msg_len > parallax_handle->send_buffer_size) {
@@ -326,6 +334,7 @@ const char *par_close(par_handle handle)
 	}
 
 	par_net_handle_destroy(parallax_handle);
+	log_info("CLOSE operation ... DONE");
 	return NULL;
 }
 
@@ -411,7 +420,7 @@ struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_k
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
 {
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
-	size_t msg_len = par_net_put_req_calc_size(key->size, value->val_size) + par_net_header_calc_size();
+	size_t msg_len = par_net_get_req_calc_size(key->size) + par_net_header_calc_size();
 	if (msg_len > parallax_handle->send_buffer_size) {
 		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
 		_exit(EXIT_FAILURE);
@@ -423,7 +432,7 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 
 	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
 	struct par_net_get_req *request =
-		par_net_get_req_create(parallax_handle->region_id, key->size, key->data,
+		par_net_get_req_create(parallax_handle->region_id, key->size, key->data, true,
 				       &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
 	if (NULL == request) {
 		log_fatal("Failed to create get request");
@@ -439,7 +448,9 @@ void par_get(par_handle handle, struct par_key *key, struct par_value *value, co
 
 	struct par_net_get_rep *reply =
 		(struct par_net_get_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
-	if (par_net_get_rep_handle_reply(reply, value)) {
+
+	if (false == par_net_get_rep_handle_reply(reply, value)) {
+		log_debug("Key %.*s NOT found", key->size, key->data);
 		*error_message = "Key Not found";
 	}
 }
@@ -459,12 +470,37 @@ void par_get_serialized(par_handle handle, char *key_serialized, struct par_valu
 // cppcheck-suppress constParameterPointer
 par_ret_code par_exists(par_handle handle, struct par_key *key)
 {
-	log_fatal("Unimplemented");
-	_exit(EXIT_FAILURE);
-	par_ret_code ret_val = { 0 };
-	(void)handle;
-	(void)key;
-	return ret_val;
+	struct par_handle *parallax_handle = (struct par_handle *)handle;
+	size_t msg_len = par_net_get_req_calc_size(key->size) + par_net_header_calc_size();
+	if (msg_len > parallax_handle->send_buffer_size) {
+		log_fatal("Send buffer too small has: %u B needs %lu B", parallax_handle->send_buffer_size, msg_len);
+		_exit(EXIT_FAILURE);
+	}
+
+	struct par_net_header *header = (struct par_net_header *)(parallax_handle->send_buffer);
+	header->total_bytes = msg_len;
+	header->opcode = OPCODE_GET;
+
+	size_t buffer_len = parallax_handle->send_buffer_size - par_net_header_calc_size();
+	struct par_net_get_req *request =
+		par_net_get_req_create(parallax_handle->region_id, key->size, key->data, false,
+				       &parallax_handle->send_buffer[par_net_header_calc_size()], &buffer_len);
+	if (NULL == request) {
+		log_fatal("Failed to create get request");
+		_exit(EXIT_FAILURE);
+	}
+
+	ssize_t bytes_received = par_net_RPC(parallax_handle->sockfd, parallax_handle->send_buffer, msg_len,
+					     &parallax_handle->recv_buffer, parallax_handle->recv_buffer_size);
+	if (0 == bytes_received) {
+		log_warn("Communication with server failed");
+		return false;
+	}
+
+	struct par_net_get_rep *reply =
+		(struct par_net_get_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
+
+	return par_net_get_rep_is_found(reply) ? PAR_SUCCESS : PAR_KEY_NOT_FOUND;
 }
 
 // cppcheck-suppress unusedFunction

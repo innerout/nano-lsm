@@ -29,9 +29,10 @@ size_t par_net_get_req_calc_size(uint32_t key_size);
   * @return An object of the response struct on success and NULL on failure
   *
   */
-struct par_net_get_req *par_net_get_req_create(uint64_t region_id, uint32_t key_size, const char *key, char *buffer,
-					       size_t *buffer_len);
+struct par_net_get_req *par_net_get_req_create(uint64_t region_id, uint32_t key_size, const char *key, bool fetch_value,
+					       char *buffer, size_t *buffer_len);
 
+bool par_net_get_req_fetch_value(struct par_net_get_req *request);
 /**
  * @brief getter for region_id
  *
@@ -74,7 +75,7 @@ size_t par_net_get_rep_calc_size(uint32_t value_size);
  *
  * @return par_net_get_rep object
 */
-struct par_net_get_rep *par_net_get_rep_create(int status, struct par_value *v, char *buffer, size_t buffer_len);
+struct par_net_get_rep *par_net_get_rep_create(bool is_found, struct par_value *value, char *buffer, size_t buffer_len);
 
 /**
  * @brief Takes the reply from server and checks if it's done correctly
@@ -82,6 +83,8 @@ struct par_net_get_rep *par_net_get_rep_create(int status, struct par_value *v, 
  * @param buffer
  *
 */
-int par_net_get_rep_handle_reply(struct par_net_get_rep *reply, struct par_value *v);
+bool par_net_get_rep_handle_reply(struct par_net_get_rep *reply, struct par_value *value);
+
+bool par_net_get_rep_is_found(struct par_net_get_rep *request);
 
 #endif

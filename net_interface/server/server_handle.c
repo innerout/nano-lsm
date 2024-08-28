@@ -1041,15 +1041,23 @@ static struct par_net_header *par_net_call_get(struct worker *worker, void *args
 
 	// log_debug("key size == %lu", (unsigned long)par_key.size);
 	const char *error_message = NULL;
-	par_get((par_handle)region_id, &par_key, &par_value, &error_message);
-	// log_debug("Value size == %lu", (unsigned long)par_value.val_size);
 
-	if (error_message)
-		log_debug("%s", error_message);
+	bool found = false;
+	if (par_net_get_req_fetch_value(request)) {
+		log_debug("Region id: %lu Calling par_get for key: %.*s", region_id, par_key.size, par_key.data);
+		par_get((par_handle)region_id, &par_key, &par_value, &error_message);
+		found = error_message == NULL;
+	} else {
+		log_debug("Region id: %lu Calling par_exists for key: %.*s", region_id, par_key.size, par_key.data);
+		par_ret_code ret_code = par_exists((par_handle)region_id, &par_key);
+		found = ret_code == PAR_SUCCESS;
+		par_value.val_size = 0;
+	}
+	log_debug("Key: %.*s --> %s", par_key.size, par_key.data, found ? "FOUND" : "NOT FOUND");
 
 	size_t buffer_len = worker->send_buffer_size - par_net_header_calc_size();
-	struct par_net_get_rep *reply = par_net_get_rep_create(
-		error_message == NULL, &par_value, &worker->send_buffer[par_net_header_calc_size()], buffer_len);
+	struct par_net_get_rep *reply =
+		par_net_get_rep_create(found, &par_value, &worker->send_buffer[par_net_header_calc_size()], buffer_len);
 	if (reply == NULL) {
 		log_warn("Failed to create reply");
 		return NULL;
@@ -1138,7 +1146,6 @@ static struct par_net_header *par_net_call_close(struct worker *worker, void *ar
 
 	const char *error_mesage = par_close(handle);
 	uint32_t error_message_size = error_mesage ? strlen(error_mesage) + 1 : 0;
-	log_fatal("Error in par_close");
 	size_t buffer_len = worker->send_buffer_size - par_net_header_calc_size();
 	struct par_net_close_rep *reply =
 		par_net_close_rep_create(error_mesage, &worker->send_buffer[par_net_header_calc_size()], buffer_len);
