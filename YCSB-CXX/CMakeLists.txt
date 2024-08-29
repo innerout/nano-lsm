@@ -2,9 +2,11 @@ include(CheckCXXCompilerFlag)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if(PARALLAX_BUILD_TESTING)
   include_directories(BEFORE core db ../lib)
+  find_package(Boost REQUIRED)
+  include_directories(${Boost_INCLUDE_DIRS})
   add_executable(ycsb-edb db/db_factory_parallax.cc core/core_workload.cc
                           driver/ycsbc.cc ../utilities/list.c)
-  target_link_libraries(ycsb-edb "${PROJECT_NAME}")
+  target_link_libraries(ycsb-edb "${PROJECT_NAME}" ${Boost_LIBRARIES})
   check_cxx_compiler_flag("-Wno-deprecated-array-compare"
                           DEPRECATED_ARRAY_COMPARE)
   if(DEPRECATED_ARRAY_COMPARE)
