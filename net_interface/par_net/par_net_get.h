@@ -75,7 +75,8 @@ size_t par_net_get_rep_calc_size(uint32_t value_size);
  *
  * @return par_net_get_rep object
 */
-struct par_net_get_rep *par_net_get_rep_create(bool is_found, struct par_value *value, char *buffer, size_t buffer_len);
+struct par_net_get_rep *par_net_get_rep_set_header(bool is_found, struct par_value *value, char *buffer,
+						   size_t buffer_len);
 
 /**
  * @brief Takes the reply from server and checks if it's done correctly
@@ -86,5 +87,7 @@ struct par_net_get_rep *par_net_get_rep_create(bool is_found, struct par_value *
 bool par_net_get_rep_handle_reply(struct par_net_get_rep *reply, struct par_value *value);
 
 bool par_net_get_rep_is_found(struct par_net_get_rep *request);
+
+size_t par_net_get_rep_header_size(void);
 
 #endif

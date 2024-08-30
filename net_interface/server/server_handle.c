@@ -129,9 +129,6 @@ struct worker {
 	size_t recv_buffer_size;
 	char *send_buffer;
 	size_t send_buffer_size;
-
-	char *par_get_buffer;
-	size_t par_get_buffer_size;
 };
 
 #ifdef SSL
@@ -274,7 +271,7 @@ struct server_options *server_parse_argv_opts(int argc, char *restrict *restrict
 		_exit(EXIT_FAILURE);
 	}
 
-	struct server_options *server_options = calloc(1, sizeof(*server_options));
+	struct server_options *server_options = calloc(1UL, sizeof(*server_options));
 	if (!server_options) {
 		log_fatal("tcp-server: memory allocation failed");
 		_exit(EXIT_FAILURE);
@@ -781,11 +778,11 @@ static int __handle_new_connection(struct worker *this)
 
 static void *__handle_events(void *arg)
 {
-	struct worker *this = arg;
+	struct worker *worker = arg;
 #ifndef SSL
-	if (__pin_thread_to_core(this->core) < 0) {
+	if (__pin_thread_to_core(worker->core) < 0) {
 		log_fatal("__pin_thread_to_core(): %s", strerror(errno));
-		exit(EXIT_FAILURE);
+		_exit(EXIT_FAILURE);
 	}
 #endif
 
@@ -805,26 +802,20 @@ static void *__handle_events(void *arg)
 
 	struct epoll_event rearm_event = { .events = EPOLLIN | EPOLLRDHUP | EPOLLONESHOT };
 	struct epoll_event epoll_events[EPOLL_MAX_EVENTS];
-	this->recv_buffer = calloc(1UL, INITIAL_NET_BUF_SIZE);
-	this->recv_buffer_size = INITIAL_NET_BUF_SIZE;
-	this->send_buffer = calloc(1UL, INITIAL_NET_BUF_SIZE);
-	this->send_buffer_size = INITIAL_NET_BUF_SIZE;
-	this->par_get_buffer = calloc(1UL, KV_MAX_SIZE);
-	this->par_get_buffer_size = KV_MAX_SIZE;
-	// pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
-	// push cleanup function (like at_exit())
+	worker->recv_buffer = calloc(1UL, INITIAL_NET_BUF_SIZE);
+	worker->recv_buffer_size = INITIAL_NET_BUF_SIZE;
+	worker->send_buffer = calloc(1UL, INITIAL_NET_BUF_SIZE);
+	worker->send_buffer_size = INITIAL_NET_BUF_SIZE;
 
 	infinite_loop_start();
 
-	events = epoll_wait(this->epfd, epoll_events, EPOLL_MAX_EVENTS, -1);
+	events = epoll_wait(worker->epfd, epoll_events, EPOLL_MAX_EVENTS, -1);
 
 	if (unlikely(events < 0)) {
 		log_fatal("epoll(): %s", strerror(errno));
 		continue;
 	}
 
-	this->par_get_buffer_size = KV_MAX_SIZE;
-	this->par_get_buffer_size = KV_MAX_SIZE;
 	event_loop_start(evindex, events);
 
 	client_sock = epoll_events[evindex].data.fd;
@@ -841,7 +832,7 @@ static void *__handle_events(void *arg)
 		shutdown(client_sock, SHUT_WR);
 		log_info("terminating connection with client(%d)", client_sock);
 
-		epoll_ctl(this->epfd, EPOLL_CTL_DEL, client_sock, NULL); // kernel 2.6+
+		epoll_ctl(worker->epfd, EPOLL_CTL_DEL, client_sock, NULL); // kernel 2.6+
 		close(client_sock);
 #ifdef SSL
 		struct conn_info *conn_info;
@@ -857,10 +848,10 @@ static void *__handle_events(void *arg)
 	} else if (likely(event_bits & EPOLLIN)) /** read event **/
 	{
 		/** new connection **/
-		if (client_sock == this->sock) {
+		if (client_sock == worker->sock) {
 			log_info("new connection");
 
-			if (__handle_new_connection(this) < 0)
+			if (__handle_new_connection(worker) < 0)
 				log_fatal("__handle_new_connection() failed: %s\n", strerror(errno));
 
 			continue;
@@ -869,7 +860,7 @@ static void *__handle_events(void *arg)
 		/** end **/
 
 		/** request **/
-		if (unlikely(__par_handle_req(this, client_sock, &req) < 0L)) {
+		if (unlikely(__par_handle_req(worker, client_sock, &req) < 0L)) {
 			log_fatal("__par_handle_req(): %s", strerror(errno));
 			goto client_error;
 		}
@@ -877,12 +868,12 @@ static void *__handle_events(void *arg)
 		/* re-enable getting INPUT-events from the coresponding client */
 
 		rearm_event.data.fd = client_sock;
-		epoll_ctl(this->epfd, EPOLL_CTL_MOD, client_sock, &rearm_event);
+		epoll_ctl(worker->epfd, EPOLL_CTL_MOD, client_sock, &rearm_event);
 
 		continue;
 
 	client_error:
-		epoll_ctl(this->epfd, EPOLL_CTL_DEL, client_sock, NULL); // kernel 2.6+
+		epoll_ctl(worker->epfd, EPOLL_CTL_DEL, client_sock, NULL); // kernel 2.6+
 		close(client_sock);
 #ifdef SSL
 		struct conn_info *conn_info;
@@ -907,11 +898,6 @@ static void *__handle_events(void *arg)
 
 	__builtin_unreachable();
 }
-
-struct par_net_arg {
-	char *get_buffer;
-	uint32_t get_buffer_size;
-};
 
 inline size_t par_net_header_calc_size(void)
 {
@@ -1026,6 +1012,7 @@ static struct par_net_header *par_net_call_del(struct worker *worker, void *args
 
 static struct par_net_header *par_net_call_get(struct worker *worker, void *args)
 {
+	(void)args;
 	struct par_net_get_req *request = (struct par_net_get_req *)&worker->recv_buffer[par_net_header_calc_size()];
 
 	uint64_t region_id = par_net_get_get_region_id(request);
@@ -1033,11 +1020,7 @@ static struct par_net_header *par_net_call_get(struct worker *worker, void *args
 	par_key.size = par_net_get_get_key_size(request);
 	par_key.data = par_net_get_get_key(request);
 
-	struct par_value par_value;
-	struct par_net_arg *params = (struct par_net_arg *)args;
-	par_value.val_buffer = params->get_buffer;
-	par_value.val_size = params->get_buffer_size;
-	par_value.val_buffer_size = par_value.val_size;
+	struct par_value par_value = { 0 };
 
 	// log_debug("key size == %lu", (unsigned long)par_key.size);
 	const char *error_message = NULL;
@@ -1045,6 +1028,10 @@ static struct par_net_header *par_net_call_get(struct worker *worker, void *args
 	bool found = false;
 	if (par_net_get_req_fetch_value(request)) {
 		log_debug("Region id: %lu Calling par_get for key: %.*s", region_id, par_key.size, par_key.data);
+		par_value.val_buffer = &worker->send_buffer[par_net_header_calc_size() + par_net_get_rep_header_size()];
+		par_value.val_buffer_size =
+			worker->send_buffer_size - (par_net_header_calc_size() + par_net_get_rep_header_size());
+		log_debug("Available buffer for gets is %u", par_value.val_buffer_size);
 		par_get((par_handle)region_id, &par_key, &par_value, &error_message);
 		found = error_message == NULL;
 	} else {
@@ -1056,8 +1043,8 @@ static struct par_net_header *par_net_call_get(struct worker *worker, void *args
 	log_debug("Key: %.*s --> %s", par_key.size, par_key.data, found ? "FOUND" : "NOT FOUND");
 
 	size_t buffer_len = worker->send_buffer_size - par_net_header_calc_size();
-	struct par_net_get_rep *reply =
-		par_net_get_rep_create(found, &par_value, &worker->send_buffer[par_net_header_calc_size()], buffer_len);
+	struct par_net_get_rep *reply = par_net_get_rep_set_header(
+		found, &par_value, &worker->send_buffer[par_net_header_calc_size()], buffer_len);
 	if (reply == NULL) {
 		log_warn("Failed to create reply");
 		return NULL;
@@ -1222,13 +1209,7 @@ static int __par_handle_req(struct worker *restrict worker, int client_sock, str
 		return EXIT_FAILURE;
 	}
 
-	struct par_net_arg args = { 0 };
-	if (opcode == OPCODE_GET) {
-		args.get_buffer = worker->par_get_buffer;
-		args.get_buffer_size = worker->par_get_buffer_size;
-	}
-
-	struct par_net_header *reply_header = par_net_call[opcode](worker, &args);
+	struct par_net_header *reply_header = par_net_call[opcode](worker, NULL);
 
 	struct iovec iov_reply[1];
 	struct msghdr msg_reply = { 0 };

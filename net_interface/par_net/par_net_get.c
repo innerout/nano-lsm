@@ -22,6 +22,11 @@ size_t par_net_get_req_calc_size(uint32_t key_size)
 	return sizeof(struct par_net_get_req) + key_size;
 }
 
+size_t par_net_get_rep_header_size(void)
+{
+	return sizeof(struct par_net_get_rep);
+}
+
 size_t par_net_get_rep_calc_size(uint32_t value_size)
 {
 	return sizeof(struct par_net_get_rep) + value_size;
@@ -57,9 +62,10 @@ char *par_net_get_get_key(struct par_net_get_req *request)
 	return (char *)request + sizeof(struct par_net_get_req);
 }
 
-struct par_net_get_rep *par_net_get_rep_create(bool is_found, struct par_value *v, char *buffer, size_t buffer_len)
+struct par_net_get_rep *par_net_get_rep_set_header(bool is_found, struct par_value *value, char *buffer,
+						   size_t buffer_len)
 {
-	if (buffer_len < par_net_get_rep_calc_size(v->val_size)) {
+	if (buffer_len < par_net_get_rep_header_size()) {
 		log_warn("Sorry buffer too small to fit KV pair");
 		return NULL;
 	}
@@ -69,9 +75,7 @@ struct par_net_get_rep *par_net_get_rep_create(bool is_found, struct par_value *
 	if (false == is_found)
 		return reply;
 
-	reply->value_size = v->val_size;
-	char *reply_buffer = (char *)reply;
-	memcpy(&reply_buffer[sizeof(struct par_net_get_rep)], v->val_buffer, v->val_size);
+	reply->value_size = value->val_size;
 	return reply;
 }
 
