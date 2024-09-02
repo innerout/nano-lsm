@@ -849,7 +849,7 @@ static void *__handle_events(void *arg)
 	{
 		/** new connection **/
 		if (client_sock == worker->sock) {
-			log_info("new connection");
+			log_debug("new connection");
 
 			if (__handle_new_connection(worker) < 0)
 				log_fatal("__handle_new_connection() failed: %s\n", strerror(errno));
