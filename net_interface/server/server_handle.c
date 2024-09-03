@@ -931,6 +931,10 @@ static struct par_net_header *par_net_call_open(struct worker *worker, void *arg
 	db_options.create_flag = par_net_open_get_flag(request);
 
 	db_options.volume_name = (char *)worker->server_handle->opts->parallax_vol_name;
+	log_debug("Setting L0 size to %u B", worker->server_handle->opts->l0_size);
+	db_options.options[LEVEL0_SIZE].value = worker->server_handle->opts->l0_size;
+	log_debug("Setting growth factor to %u", worker->server_handle->opts->growth_factor);
+	db_options.options[GROWTH_FACTOR].value = worker->server_handle->opts->growth_factor;
 
 	const char *error_message = NULL;
 	log_debug("Opening db with name == %s", db_options.db_name);
