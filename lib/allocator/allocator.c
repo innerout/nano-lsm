@@ -778,42 +778,42 @@ struct volume_descriptor *mem_get_volume_desc(char *volume_name)
 {
 	static pthread_mutex_t volume_map_lock = PTHREAD_MUTEX_INITIALIZER;
 	MUTEX_LOCK(&volume_map_lock);
-	struct volume_map_entry *volume;
+	struct volume_map_entry *volume = NULL;
 	uint64_t hash_key = djb2_hash((unsigned char *)volume_name, strlen(volume_name));
 
 	HASH_FIND_PTR(volume_map, &hash_key, volume);
+	if (volume)
+		goto exit;
 
-	if (NULL == volume) {
-		log_debug("Volume %s not open creating/initializing new volume ...", volume_name);
-		volume = calloc(1, sizeof(struct volume_map_entry));
+	log_debug("Volume %s not open creating/initializing new volume ...", volume_name);
+	volume = calloc(1, sizeof(struct volume_map_entry));
 
-		if (!volume) {
-			log_fatal("calloc failed");
-			BUG_ON();
-		}
-
-		volume->volume_desc = mem_init_volume(volume_name);
-
-		if (strlen(volume_name) >= MEM_MAX_VOLUME_NAME_SIZE) {
-			log_fatal("Volume name too large!");
-			BUG_ON();
-		}
-
-		memcpy(volume->volume_name, volume_name, strlen(volume_name));
-		volume->hash_key = djb2_hash((unsigned char *)volume_name, strlen(volume_name));
-		volume->volume_desc->size = mount_volume(volume_name, 0, 0);
-
-		volume->volume_desc->db_superblock_lock =
-			calloc(volume->volume_desc->vol_superblock.max_regions_num, sizeof(pthread_mutex_t));
-
-		for (uint32_t i = 0; i < volume->volume_desc->vol_superblock.max_regions_num; ++i)
-			MUTEX_INIT(&volume->volume_desc->db_superblock_lock[i], NULL);
-
-		recover_allocator_bitmap(volume->volume_desc);
+	if (!volume) {
+		log_fatal("calloc failed");
+		BUG_ON();
 	}
 
-	HASH_ADD_PTR(volume_map, hash_key, volume);
-	MUTEX_UNLOCK(&volume_map_lock);
+	volume->volume_desc = mem_init_volume(volume_name);
 
+	if (strlen(volume_name) >= MEM_MAX_VOLUME_NAME_SIZE) {
+		log_fatal("Volume name too large!");
+		BUG_ON();
+	}
+
+	memcpy(volume->volume_name, volume_name, strlen(volume_name));
+	volume->hash_key = djb2_hash((unsigned char *)volume_name, strlen(volume_name));
+	volume->volume_desc->size = mount_volume(volume_name, 0, 0);
+
+	volume->volume_desc->db_superblock_lock =
+		calloc(volume->volume_desc->vol_superblock.max_regions_num, sizeof(pthread_mutex_t));
+
+	for (uint32_t i = 0; i < volume->volume_desc->vol_superblock.max_regions_num; ++i)
+		MUTEX_INIT(&volume->volume_desc->db_superblock_lock[i], NULL);
+
+	recover_allocator_bitmap(volume->volume_desc);
+	HASH_ADD_PTR(volume_map, hash_key, volume);
+
+exit:
+	MUTEX_UNLOCK(&volume_map_lock);
 	return volume->volume_desc;
 }
