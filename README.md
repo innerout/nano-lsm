@@ -7,7 +7,8 @@ Parallax is an LSM-based persistent key-value store designed for flash storage d
 
 If you want to use Parallax check the [Build](docs/Build.md) guide.
 
-
+## Running Parallax Server
+If you want to run Parallax Server check the [Run Parallax Server](net_interface/README.md) guide.
 
 
 ## Acknowledgements

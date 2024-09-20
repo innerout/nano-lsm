@@ -24,3 +24,13 @@ instead of parallax.
 server folder contains all the server related code whereas par_net contain all
 the client related code. The implementation the Parallax network library that
 uses par_net classes is at <PARALLAX_HOME_FOLDER>/lib/api/parallax_client_lib.c
+
+
+## Running YCSB Against Parallax TCP/IP Server
+
+To run YCSB against the TCP/IP Parallax server, use the ycsb_tcp executable.
+This executable is specifically designed for interfacing with the Parallax
+server over TCP/IP, ensuring optimal performance and compatibility.
+
+Set in <PARALLAX_HOME_FOLDER>options.yml the property parallax_server: <server
+hostname>:<server port>, where Parallax server runs.
