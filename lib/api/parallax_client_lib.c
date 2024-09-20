@@ -419,6 +419,16 @@ struct par_put_metadata par_put_serialized(par_handle handle, char *serialized_k
 // cppcheck-suppress constParameterPointer
 void par_get(par_handle handle, struct par_key *key, struct par_value *value, const char **error_message)
 {
+	if (value == NULL) {
+		log_fatal("Value should not be null");
+		_exit(EXIT_FAILURE);
+	}
+
+	if (value->val_buffer == NULL) {
+		log_fatal("In Parallax client lib value buffer should not be null");
+		_exit(EXIT_FAILURE);
+	}
+
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
 	size_t msg_len = par_net_get_req_calc_size(key->size) + par_net_header_calc_size();
 	if (msg_len > parallax_handle->send_buffer_size) {

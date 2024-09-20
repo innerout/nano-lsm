@@ -1,15 +1,5 @@
-// -*-c++-*-
-
-//
-//  eutropia_db.h
-//  YCSB-C
-//
-//  Created by Anastasios Papagiannis on 17/11/15.
-//  Copyright (c) 2015 Anastasios Papagiannis <apapag@ics.forth.gr>.
-//
-
-#ifndef YCSB_C_PARALLAX_DB_H
-#define YCSB_C_PARALLAX_DB_H
+#ifndef YCSB_C_PARALLAX_DB_TCP_H
+#define YCSB_C_PARALLAX_DB_TCP_H
 
 #include <algorithm>
 #include <atomic>
@@ -32,104 +22,132 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <unordered_map>
 __thread int x = 0;
-//#include "core/properties.h"
 extern std::string path;
 extern std::string custom_workload;
 extern "C" {
 #include <parallax/parallax.h>
 }
+#define MAX_THREADS_NUM 128U
+#define GET_BUFFER_SIZE 262144U
 
 using std::cout;
 using std::endl;
 
 namespace ycsbc
 {
-class ParallaxDB : public YCSBDB {
+
+class ParallaxDBTCP : public YCSBDB {
     private:
 	int db_num;
 	int field_count;
-	std::vector<par_handle> dbs;
+	std::unordered_map<int, std::vector<par_handle> > thread_dbs;
+	std::mutex db_mutex;
 
     public:
-	ParallaxDB(int num, utils::Properties &props)
+	ParallaxDBTCP(int num, utils::Properties &props)
 		: db_num(num)
 		, field_count(std::stoi(
 			  props.GetProperty(CoreWorkload::FIELD_COUNT_PROPERTY, CoreWorkload::FIELD_COUNT_DEFAULT)))
-		, dbs()
+		, thread_dbs()
 	{
 	}
 
-	virtual ~ParallaxDB()
+	virtual ~ParallaxDBTCP()
 	{
+	}
+
+    private:
+	// Retrieve the dbs vector for the current thread, initialize if empty
+	std::vector<par_handle> &getDBVector(int thread_id)
+	{
+		if (false == thread_dbs[thread_id].empty())
+			return thread_dbs[thread_id];
+
+		std::cerr << "Initializing dbs for thread " << thread_id << std::endl;
+		for (int i = 0; i < db_num; ++i) {
+			par_db_options db_options;
+			db_options.volume_name = (char *)"TRELAKIAS";
+			db_options.create_flag = PAR_CREATE_DB;
+			db_options.options = par_get_default_options();
+			for (int i = 0; i < db_num; ++i) {
+				std::string db_name = "data" + std::to_string(i) + ".dat";
+				db_options.db_name = (char *)db_name.c_str();
+				const char *error_message = nullptr;
+				par_handle hd = par_open(&db_options, &error_message);
+
+				if (error_message != nullptr) {
+					std::cerr << error_message << std::endl;
+					_Exit(EXIT_FAILURE);
+				}
+
+				thread_dbs[thread_id].push_back(hd);
+			}
+		}
+		return thread_dbs[thread_id];
 	}
 
     public:
 	void Init()
 	{
-		const char *pathname = path.c_str();
-
-		par_db_options db_options;
-		db_options.volume_name = (char *)pathname;
-		db_options.create_flag = PAR_CREATE_DB;
-		db_options.options = par_get_default_options();
-		dbs.clear();
-		for (int i = 0; i < db_num; ++i) {
-			std::string db_name = "data" + std::to_string(i) + ".dat";
-			db_options.db_name = (char *)db_name.c_str();
-			const char *error_message = nullptr;
-			par_handle hd = par_open(&db_options, &error_message);
-
-			if (error_message != nullptr) {
-				std::cerr << error_message << std::endl;
-				_Exit(EXIT_FAILURE);
-			}
-
-			dbs.push_back(hd);
+		std::lock_guard<std::mutex> lock(db_mutex);
+		for (unsigned int i = 0; i < MAX_THREADS_NUM; ++i) {
+			// Pre-populate the map with empty vectors, keys being thread ids
+			// (Using dummy thread ids or actual ones if threads are available)
+			thread_dbs[0] = std::vector<par_handle>(); // Empty vector for each thread
 		}
 	}
 
 	void Close()
 	{
-		for (int i = 0; i < db_num; ++i) {
-			const char *error_message = par_close(dbs[i]);
-			if (error_message != nullptr) {
-				std::cerr << error_message << std::endl;
-				_Exit(EXIT_FAILURE);
+		std::lock_guard<std::mutex> lock(db_mutex); // Ensure thread-safe access to the map
+
+		// Iterate over all the thread entries in the global map
+		for (auto &entry : thread_dbs) {
+			unsigned int tid = entry.first;
+			std::vector<par_handle> &dbs = entry.second;
+
+			std::cout << "Closing dbs for thread " << tid << std::endl;
+
+			// Iterate over the dbs vector and close each par_handle
+			for (size_t i = 0; i < dbs.size(); ++i) {
+				const char *error_message = par_close(dbs[i]);
+				if (error_message != nullptr) {
+					std::cerr << "Error closing db in thread " << tid << ": " << error_message
+						  << std::endl;
+					_Exit(EXIT_FAILURE); // Exit if there is an error
+				}
 			}
-		}
-#if MEASURE_SST_USED_SPACE
-		for (int i = 0; i < MAX_LEVELS; i++)
-			std::cerr << "Avg SST used capacity" << dbs[0]->db_desc->levels[i].avg_leaf_used_space
-				  << std::endl;
-#endif
 
-#if MEASURE_MEDIUM_INPLACE
-		for (int i = 0; i < db_num; ++i) {
-			std::cerr << "Db name" << dbs[i]->db_desc->db_name << "Number of keys in place"
-				  << dbs[i]->db_desc->count_medium_inplace << std::endl;
+			// Clear the vector after closing all dbs
+			dbs.clear();
 		}
-#endif
+
+		// Optionally, clear the entire map if you're done with it
+		thread_dbs.clear();
 	}
-
 	int __read(int id, const std::string &table, const std::string &key, const std::vector<std::string> *fields,
 		   std::vector<KVPair> &result)
 	{
+		std::vector<par_handle> dbs = getDBVector(id);
+		char get_buffer[GET_BUFFER_SIZE];
 		std::hash<std::string> hash_fn;
 		uint32_t db_id = hash_fn(key) % db_num;
 		std::map<std::string, std::string> vmap;
 		struct par_key lookup_key = { .size = (uint32_t)key.length(), .data = (const char *)key.c_str() };
-		struct par_value lookup_value = { .val_buffer = NULL };
+		struct par_value lookup_value = {
+			.val_buffer_size = GET_BUFFER_SIZE,
+			.val_size = 0,
+			.val_buffer = (char *)get_buffer,
+		};
 
 		const char *error_message = NULL;
 		par_get(dbs[db_id], &lookup_key, &lookup_value, &error_message);
 		if (error_message) {
-			std::cout << "[1]cannot find : " << key << " in DB " << db_id << std::endl;
-			return 0;
-			exit(EXIT_FAILURE);
+			std::cerr << "[1]cannot find : " << key << " in DB " << db_id << std::endl;
+			_exit(EXIT_FAILURE);
 		}
-		free(lookup_value.val_buffer);
-		lookup_value.val_buffer = NULL;
 		//     return 0;
 #if 0
 		if (*(int32_t *)val > 16000) {
@@ -191,6 +209,8 @@ class ParallaxDB : public YCSBDB {
 	int Scan(int id, const std::string &table, const std::string &key, int len,
 		 const std::vector<std::string> *fields, std::vector<KVPair> &result)
 	{
+		std::vector<par_handle> dbs = getDBVector(id);
+
 		int items = 0;
 		std::hash<std::string> hash_fn;
 
@@ -220,13 +240,19 @@ class ParallaxDB : public YCSBDB {
 
 	int Update(int id, const std::string &table, const std::string &key, std::vector<KVPair> &values)
 	{
+		std::vector<par_handle> dbs = getDBVector(id);
+		char get_buffer[GET_BUFFER_SIZE];
 		if (field_count > 1) { // this results in read-modify-write. Maybe we should use merge operator here
 			std::hash<std::string> hash_fn;
 			uint32_t db_id = hash_fn(key) % db_num;
 			std::map<std::string, std::string> vmap;
 			struct par_key lookup_key = { .size = (uint32_t)key.length(),
 						      .data = (const char *)key.c_str() };
-			struct par_value lookup_value = { .val_buffer = NULL };
+			struct par_value lookup_value = {
+				.val_buffer_size = GET_BUFFER_SIZE,
+				.val_size = 0,
+				.val_buffer = (char *)get_buffer,
+			};
 
 			const char *error_message = NULL;
 			par_get(dbs[db_id], &lookup_key, &lookup_value, &error_message);
@@ -236,8 +262,6 @@ class ParallaxDB : public YCSBDB {
 				assert(0);
 				exit(EXIT_FAILURE);
 			}
-			free(lookup_value.val_buffer);
-			lookup_value.val_buffer = NULL;
 
 #if 0
         if(*(int32_t *)val > 16000){
@@ -293,6 +317,8 @@ class ParallaxDB : public YCSBDB {
 
 	int Insert(int id, const std::string &table, const std::string &key, std::vector<KVPair> &values)
 	{
+		std::vector<par_handle> dbs = getDBVector(id);
+
 		std::hash<std::string> hash_fn;
 		uint32_t db_id = hash_fn(key) % db_num;
 

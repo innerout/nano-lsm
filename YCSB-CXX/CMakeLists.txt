@@ -2,24 +2,21 @@ include(CheckCXXCompilerFlag)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/lib)
 
- function(link_target target_name)
-   if(TCP)
-		 target_link_libraries(${target_name} "${PROJECT_NAME}_net_lib" ${Boost_LIBRARIES})
-   else()
-     target_link_libraries(${target_name} "${PROJECT_NAME}" ${Boost_LIBRARIES})
-   endif()
- endfunction()
-
-
 if(PARALLAX_BUILD_TESTING)
-	include_directories(BEFORE core db ../lib)
+  include_directories(BEFORE core db ${CMAKE_SOURCE_DIR}/lib/include)
   find_package(Boost REQUIRED)
   include_directories(${Boost_INCLUDE_DIRS})
   add_executable(ycsb-edb db/db_factory_parallax.cc core/core_workload.cc
                           driver/ycsbc.cc ../utilities/list.c)
+  target_link_libraries(ycsb-edb PRIVATE "${PROJECT_NAME}" ${Boost_LIBRARIES}
+                                         log Threads::Threads)
 
+  add_executable(ycsb-tcp db/db_factory_parallax_tcp.cc core/core_workload.cc
+                          driver/ycsbc.cc ../utilities/list.c)
+  target_link_libraries(
+    ycsb-tcp PRIVATE "${PROJECT_NAME}_net_lib" ${Boost_LIBRARIES} log
+                     Threads::Threads)
 
- 	link_target(ycsb-edb)
   check_cxx_compiler_flag("-Wno-deprecated-array-compare"
                           DEPRECATED_ARRAY_COMPARE)
   if(DEPRECATED_ARRAY_COMPARE)

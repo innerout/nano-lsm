@@ -812,7 +812,7 @@ static void *__handle_events(void *arg)
 	events = epoll_wait(worker->epfd, epoll_events, EPOLL_MAX_EVENTS, -1);
 
 	if (unlikely(events < 0)) {
-		log_fatal("epoll(): %s", strerror(errno));
+		// log_fatal("epoll(): %s", strerror(errno));
 		continue;
 	}
 
@@ -1031,11 +1031,11 @@ static struct par_net_header *par_net_call_get(struct worker *worker, void *args
 
 	bool found = false;
 	if (par_net_get_req_fetch_value(request)) {
-		log_debug("Region id: %lu Calling par_get for key: %.*s", region_id, par_key.size, par_key.data);
+		// log_debug("Region id: %lu Calling par_get for key: %.*s", region_id, par_key.size, par_key.data);
 		par_value.val_buffer = &worker->send_buffer[par_net_header_calc_size() + par_net_get_rep_header_size()];
 		par_value.val_buffer_size =
 			worker->send_buffer_size - (par_net_header_calc_size() + par_net_get_rep_header_size());
-		log_debug("Available buffer for gets is %u", par_value.val_buffer_size);
+		// log_debug("Available buffer for gets is %u", par_value.val_buffer_size);
 		par_get((par_handle)region_id, &par_key, &par_value, &error_message);
 		found = error_message == NULL;
 	} else {
@@ -1044,7 +1044,7 @@ static struct par_net_header *par_net_call_get(struct worker *worker, void *args
 		found = ret_code == PAR_SUCCESS;
 		par_value.val_size = 0;
 	}
-	log_debug("Key: %.*s --> %s", par_key.size, par_key.data, found ? "FOUND" : "NOT FOUND");
+	// log_debug("Key: %.*s --> %s", par_key.size, par_key.data, found ? "FOUND" : "NOT FOUND");
 
 	size_t buffer_len = worker->send_buffer_size - par_net_header_calc_size();
 	struct par_net_get_rep *reply = par_net_get_rep_set_header(
