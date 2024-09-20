@@ -32,5 +32,5 @@ To run YCSB against the TCP/IP Parallax server, use the ycsb_tcp executable.
 This executable is specifically designed for interfacing with the Parallax
 server over TCP/IP, ensuring optimal performance and compatibility.
 
-Set in <PARALLAX_HOME_FOLDER>options.yml the property parallax_server: <server
-hostname>:<server port>, where Parallax server runs.
+Set in <PARALLAX_HOME_FOLDER>options.yml the property
+parallax_server: <server_hostname>:<server_port>, where Parallax server runs.
