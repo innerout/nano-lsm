@@ -83,8 +83,8 @@ par_handle par_net_open_rep_handle_reply(char *buffer)
 {
 	struct par_net_open_rep *reply = (struct par_net_open_rep *)buffer;
 	if (reply->status == 1) {
-		log_fatal("Invalid Reply status");
-		_exit(EXIT_FAILURE);
+		log_debug("Did not open anything");
+		return 0;
 	}
 
 	par_handle handle = (par_handle)reply->region_id;

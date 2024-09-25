@@ -158,7 +158,11 @@ static par_handle par_net_init(const char *parallax_host)
 
 void par_net_handle_destroy(par_handle handle)
 {
-	log_debug("Destroying handle Bye Bye");
+	if (NULL == handle) {
+		log_debug("NULL handle to destroy?");
+		return;
+	}
+	log_debug("Destroying handle Bye Bye not null");
 	struct par_handle *parallax_handle = (struct par_handle *)handle;
 	if (close(parallax_handle->sockfd) < 0) {
 		log_fatal("Failed to close the socket");
@@ -248,6 +252,7 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	struct par_options_desc *configuration = par_get_default_options();
 	struct par_handle *parallax_handle =
 		(struct par_handle *)par_net_init((const char *)configuration[PARALLAX_SERVER].value);
+	parallax_handle->configuration = configuration;
 
 	size_t msg_len = par_net_open_req_calc_size(par_net_get_size(db_options->db_name)) + par_net_header_calc_size();
 
@@ -283,7 +288,7 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 
 	par_handle ret_handle =
 		par_net_open_rep_handle_reply(&parallax_handle->recv_buffer[par_net_header_calc_size()]);
-	if (!ret_handle) {
+	if (0 == ret_handle) {
 		*error_message = "Operation (open) failed";
 		par_net_handle_destroy(parallax_handle);
 		return NULL;
