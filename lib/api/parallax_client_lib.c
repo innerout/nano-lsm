@@ -403,6 +403,7 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 		(struct par_net_put_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
 
 	struct par_put_metadata metadata = par_net_put_rep_handle_reply(reply);
+	log_debug("Client lsn got from put is %lu", metadata.lsn);
 
 	return metadata;
 }

@@ -79,17 +79,14 @@ struct par_net_put_rep *par_net_put_rep_create(int status, struct par_put_metada
 	struct par_net_put_rep *reply = (struct par_net_put_rep *)buffer;
 
 	reply->status = status;
-
-	if (status == 1)
-		return reply;
 	reply->op_metadata = metadata;
-
+	log_debug("LSN got from put is: %lu", reply->op_metadata.lsn);
 	return reply;
 }
 
 struct par_put_metadata par_net_put_rep_handle_reply(struct par_net_put_rep *reply)
 {
-	if (reply->status == 1) {
+	if (reply->status == 0) {
 		log_fatal("Invalid Reply status");
 		_exit(EXIT_FAILURE);
 	}

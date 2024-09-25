@@ -973,7 +973,7 @@ static struct par_net_header *par_net_call_put(struct worker *worker, void *args
 
 	const char *error_message = NULL;
 	struct par_put_metadata metadata = par_put((par_handle)region_id, &kv_pair, &error_message);
-
+	log_debug("LSN is %lu", metadata.lsn);
 	size_t buffer_len = worker->send_buffer_size - par_net_header_calc_size();
 	struct par_net_put_rep *reply = par_net_put_rep_create(
 		error_message == NULL, metadata, &worker->send_buffer[par_net_header_calc_size()], buffer_len);
@@ -981,7 +981,7 @@ static struct par_net_header *par_net_call_put(struct worker *worker, void *args
 		log_warn("Failed to create put reply");
 		return NULL;
 	}
-	struct par_net_header *reply_header = (struct par_net_header *)worker->recv_buffer;
+	struct par_net_header *reply_header = (struct par_net_header *)worker->send_buffer;
 	reply_header->opcode = OPCODE_PUT;
 	reply_header->total_bytes = par_net_header_calc_size() + par_net_put_rep_calc_size();
 	return reply_header;
