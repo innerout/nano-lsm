@@ -239,7 +239,7 @@ inline bool level_set_compaction_done(struct device_level *level)
 	return !(level->compaction_in_progress = false);
 }
 
-bool level_has_overflow(struct device_level *level, uint32_t tree_id)
+bool level_has_overflow(struct device_level *level, uint8_t tree_id)
 {
 	return level->level_size[tree_id] >= level->max_level_size;
 }

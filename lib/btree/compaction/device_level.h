@@ -289,7 +289,7 @@ void level_destroy(struct device_level *level);
  *  @param tree_id tree of the level to check
  * @return true if it has otherwise false
 */
-bool level_has_overflow(struct device_level *level, uint32_t tree_id);
+bool level_has_overflow(struct device_level *level, uint8_t tree_id);
 
 typedef void *compaction_func(void *compaction_request);
 

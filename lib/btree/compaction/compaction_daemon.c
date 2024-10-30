@@ -196,6 +196,32 @@ static void *compactiond_run(void *args)
 			comp_req = NULL;
 		}
 
+		bool split_LSM = true;
+
+		for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
+			if (!level_has_overflow(db_desc->dev_levels[level_id], 0)) {
+				split_LSM = false;
+				break;
+			}
+		}
+
+		if (split_LSM && !level_is_compacting(db_desc->dev_levels[MAX_LEVELS - 1])) {
+			struct compaction_request *comp_req = compaction_create_req(
+				db_desc, &handle->db_options, UINT64_MAX, 0, 0, MAX_LEVELS - 1, 0, 0);
+
+			for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
+				if (0 == level_id) {
+					bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, 0, 0);
+					continue;
+				}
+
+				level_set_comp_in_progress(db_desc->dev_levels[level_id]);
+			}
+
+			level_start_comp_thread(db_desc->dev_levels[compaction_get_dst_level(comp_req)], compaction,
+						comp_req);
+		}
+
 		// rest of levels
 		for (uint8_t level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
 			struct device_level *src_level = db_desc->dev_levels[level_id];
