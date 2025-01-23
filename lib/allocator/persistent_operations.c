@@ -45,7 +45,7 @@ struct log_info {
 	uint64_t size;
 };
 
-#define ALIGN_UP(number, alignment) (((number) + (alignment)-1) / (alignment) * (alignment))
+#define ALIGN_UP(number, alignment) (((number) + (alignment) - 1) / (alignment) * (alignment))
 
 static void flush_segment_in_log(int file_desc, uint64_t file_offset, char *buffer, int32_t IO_size)
 {
@@ -242,7 +242,9 @@ write_logs_info:;
 */
 static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, uint64_t txn_id)
 {
-	log_debug("Flushing Lmax to Ln!");
+	// We don't care for the medium KVs at the moment so we omit the flush of the medium log
+	log_debug("Flushing Lmax to Ln! remove return from here gxanth");
+	return;
 	uint64_t new_medium_log_head_offt = level_trim_medium_log(db_desc->dev_levels[level_id], db_desc, txn_id);
 
 	pr_lock_db_superblock(db_desc);

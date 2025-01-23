@@ -65,6 +65,8 @@ struct device_level {
 
 struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uint32_t growth_factor)
 {
+	assert(level_id != 0);
+	assert(level_id < MAX_LEVELS);
 	struct device_level *level = calloc(1UL, sizeof(struct device_level));
 	level->level_id = level_id;
 	level->compaction_in_progress = false;
@@ -76,14 +78,12 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
 	MUTEX_INIT(&level->level_allocation_lock, NULL);
 
 	level->max_level_size = l0_size;
-	if (0 == level_id)
-		return level;
-	if (MAX_LEVELS - 1 == level_id) {
+	if (level_id != MAX_LEVELS - 1) {
+		for (uint32_t i = 1; i <= level_id; i++)
+			level->max_level_size = level->max_level_size * growth_factor;
+	} else {
 		level->max_level_size = UINT64_MAX;
-		return level;
 	}
-	for (uint32_t i = 1; i <= level_id; i++)
-		level->max_level_size = level->max_level_size * growth_factor;
 	// log_debug("Level_id: %u has max level size of: %lu", level_id, level->max_level_size);
 
 	dev_leaf_register(&level->level_leaf_api);
@@ -237,6 +237,11 @@ void level_save_to_superblock(struct device_level *level, struct pr_db_superbloc
 inline bool level_set_compaction_done(struct device_level *level)
 {
 	return !(level->compaction_in_progress = false);
+}
+
+uint64_t level_get_max_size(struct device_level *level)
+{
+	return level->max_level_size;
 }
 
 bool level_has_overflow(struct device_level *level, uint8_t tree_id)

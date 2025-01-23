@@ -34,7 +34,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#define PAR_MAX_PREALLOCATED_SIZE 512UL
+#define PAR_MAX_PREALLOCATED_SIZE (512UL)
 
 char *par_format(char *device_name, uint32_t max_regions_num)
 {

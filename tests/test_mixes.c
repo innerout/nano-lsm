@@ -222,9 +222,6 @@ static void insert_keys(par_handle handle, struct test_info info)
 	pthread_join(medium, NULL);
 	pthread_join(big, NULL);
 
-	pthread_join(small, NULL);
-	pthread_join(medium, NULL);
-	pthread_join(big, NULL);
 	log_info("All categories with the static configuration are populated.");
 
 	population_info_small.size_type = RANDOM;
@@ -527,7 +524,6 @@ int main(int argc, char *argv[])
 	const uint32_t medium_kvs_percentage = *(int *)get_option(options, 3);
 	const uint32_t small_kvs_percentage = *(int *)get_option(options, 4);
 	const uint32_t big_kvs_percentage = *(int *)get_option(options, 5);
-
 	/*sum of percentages must be equal 100*/
 	assert(medium_kvs_percentage + small_kvs_percentage + big_kvs_percentage == 100);
 	const char *error_message = par_format((char *)path, 128);

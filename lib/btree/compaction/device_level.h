@@ -291,6 +291,8 @@ void level_destroy(struct device_level *level);
 */
 bool level_has_overflow(struct device_level *level, uint8_t tree_id);
 
+uint64_t level_get_max_size(struct device_level *level);
+
 typedef void *compaction_func(void *compaction_request);
 
 /**

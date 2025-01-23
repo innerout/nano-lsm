@@ -102,31 +102,11 @@ static void *compactiond_run(void *args)
 			db_desc->db_state = DB_IS_CLOSING;
 			return NULL;
 		}
-		// struct level_descriptor *level_0 = &handle->db_desc->levels[0];
 
-		// int L0_tree = next_L0_tree_to_compact;
-		// int L1_tree = 0;
 		comp_req = compactiond_compact_L0(daemon, daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL, 0);
 		if (comp_req)
 			++daemon->next_L0_tree_to_compact;
-		// if (level_0->tree_status[next_L0_tree_to_compact % NUM_TREES_PER_LEVEL] == BT_NO_COMPACTION &&
-		//     level_0->level_size[next_L0_tree_to_compact % NUM_TREES_PER_LEVEL] >= level_0->max_level_size &&
-		//     src_level->tree_status[L1_tree] == BT_NO_COMPACTION &&
-		//     src_level->level_size[L1_tree] < src_level->max_level_size) {
-		// 	/*mark them as compacting L0*/
 
-		// 	bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, 0,
-		// 			 next_L0_tree_to_compact % NUM_TREES_PER_LEVEL);
-		// 	/*mark them as compacting L1*/
-		// 	bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, 1, L1_tree);
-
-		// 	/*start a compaction*/
-		// 	comp_req = compaction_create_req(handle->db_desc, &handle->db_options, UINT64_MAX, UINT64_MAX,
-		// 					 0, next_L0_tree_to_compact++ % NUM_TREES_PER_LEVEL, 1, 1);
-		// 	// if (++next_L0_tree_to_compact >= NUM_TREES_PER_LEVEL)
-		// 	// 	next_L0_tree_to_compact = 0;
-		// }
-		/*can I set a different active tree for L0*/
 		int active_tree = db_desc->L0.active_tree;
 		if (db_desc->L0.tree_status[active_tree] == BT_COMPACTION_IN_PROGRESS) {
 			int next_active_tree = active_tree < NUM_TREES_PER_LEVEL - 1 ? active_tree + 1 : 0;
@@ -198,36 +178,42 @@ static void *compactiond_run(void *args)
 
 		bool split_LSM = true;
 
-		for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
-			if (!level_has_overflow(db_desc->dev_levels[level_id], 0)) {
+		for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
+			bool level_compacting = level_is_compacting(db_desc->dev_levels[level_id]);
+			bool level_overflow = level_has_overflow(db_desc->dev_levels[level_id], 0);
+
+			if (level_compacting || !level_overflow) {
 				split_LSM = false;
 				break;
 			}
 		}
 
-		if (split_LSM && !level_is_compacting(db_desc->dev_levels[MAX_LEVELS - 1])) {
-			struct compaction_request *comp_req = compaction_create_req(
-				db_desc, &handle->db_options, UINT64_MAX, 0, 0, MAX_LEVELS - 1, 0, 0);
+		if (split_LSM) {
+			log_info("Splitting LSM tree for db %s", db_desc->db_superblock->db_name);
+			int next_L0_tree = daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL;
+			struct compaction_request *split_comp_req =
+				compaction_create_req(db_desc, &handle->db_options, UINT64_MAX, UINT64_MAX, 0,
+						      next_L0_tree, MAX_LEVELS - 1, 0);
+			assert(db_desc->L0.tree_status[next_L0_tree] == BT_NO_COMPACTION);
+			bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, 0, next_L0_tree);
 
-			for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) {
-				if (0 == level_id) {
-					bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, 0, 0);
-					continue;
-				}
-
+			for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
+				assert(level_is_compacting(db_desc->dev_levels[level_id]) == false);
 				level_set_comp_in_progress(db_desc->dev_levels[level_id]);
 			}
 
-			level_start_comp_thread(db_desc->dev_levels[compaction_get_dst_level(comp_req)], compaction,
-						comp_req);
+			++daemon->next_L0_tree_to_compact;
+			level_start_comp_thread(db_desc->dev_levels[MAX_LEVELS - 1], compaction, split_comp_req);
 		}
 
 		// rest of levels
 		for (uint8_t level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
 			struct device_level *src_level = db_desc->dev_levels[level_id];
-			const struct device_level *dst_level = db_desc->dev_levels[level_id + 1];
+			struct device_level *dst_level = db_desc->dev_levels[level_id + 1];
 
 			if (false == level_has_overflow(src_level, 0))
+				continue;
+			if (true == level_has_overflow(dst_level, 0))
 				continue;
 			if (level_is_compacting(src_level))
 				continue;

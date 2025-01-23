@@ -30,4 +30,6 @@ uint8_t compaction_get_src_level(struct compaction_request *comp_req);
 void *compaction(void *compaction_request);
 
 void compaction_close(struct compaction_request *comp_req);
+
+void compaction_split_close(struct compaction_request *comp_req);
 #endif
