@@ -4,7 +4,7 @@
 repos:
 
     - repo: https://github.com/pre-commit/pre-commit-hooks
-      rev: v4.6.0
+      rev: v5.0.0
       hooks:
           - id: trailing-whitespace
             exclude: docs/
@@ -37,12 +37,12 @@ repos:
 
 
     - repo: https://github.com/psf/black
-      rev: 24.4.2
+      rev: 24.10.0
       hooks:
           - id: black
 
     - repo: https://github.com/RobertCraigie/pyright-python
-      rev: v1.1.366
+      rev: v1.1.392.post0
       hooks:
           - id: pyright
 
