@@ -698,29 +698,26 @@ void *compaction(void *compaction_request)
 
 		L0_scanner_close(comp_req->L0_scanner);
 		// sum all levels sizes
-		int sum = handle.db_desc->L0.level_size[comp_req->src_tree];
-		for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
-			for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) {
-				log_trace("Level[%u][%u] size = %lu", level_id, tree_id,
-					  level_get_size(handle.db_desc->dev_levels[level_id], tree_id));
-				sum += level_get_size(handle.db_desc->dev_levels[level_id], tree_id);
-			}
-		}
-		log_trace("Sum of all levels = %d", sum);
+		/* int sum = handle.db_desc->L0.level_size[comp_req->src_tree]; */
+		/* for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) { */
+		/* 	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) { */
+		/* 		log_trace("Level[%u][%u] size = %lu", level_id, tree_id, */
+		/* 			  level_get_size(handle.db_desc->dev_levels[level_id], tree_id)); */
+		/* 		sum += level_get_size(handle.db_desc->dev_levels[level_id], tree_id); */
+		/* 	} */
+		/* } */
+		/* log_trace("Sum of all levels = %d", sum); */
 		for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
 			level_comp_scanner_close(scanners[level_id]);
 		}
 
 		mark_segment_space(&handle, m_heap->dups, comp_req->txn_id);
-		log_trace("Src tree = %u", comp_req->src_tree);
 		comp_zero_level(handle.db_desc, 0, comp_req->src_tree);
 		// print all L0 sizes
-		for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) {
-			log_trace("L0 size[%u] = %lu", tree_id, handle.db_desc->L0.level_size[tree_id]);
-		}
 
 		for (uint8_t level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
 			comp_zero_level(handle.db_desc, level_id, 0);
+			level_set_root(handle.db_desc->dev_levels[level_id], 0);
 		}
 		sh_destroy_heap(m_heap);
 
@@ -730,7 +727,9 @@ void *compaction(void *compaction_request)
 		bt_set_db_status(db_desc, BT_NO_COMPACTION, comp_req->src_level, comp_req->src_tree);
 		for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
 			level_set_compaction_done(handle.db_desc->dev_levels[level_id]);
+			// set root of the level to NULL
 		}
+
 		compactiond_notify_all(comp_req->db_desc->compactiond);
 		compactiond_interrupt(comp_req->db_desc->compactiond);
 		/* log_trace("Compaction finished"); */

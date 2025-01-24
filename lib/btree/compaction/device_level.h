@@ -318,7 +318,7 @@ bool level_zero(struct device_level *level, uint32_t tree_id);
  * @param tree_id id of tree out of the NUM_TREES_PER_LEVEL
  * @param node pointer to the new root of the level
  */
-bool level_set_root(struct device_level *level, uint32_t tree_id, struct node_header *node);
+void level_set_root(struct device_level *level, uint32_t tree_id);
 
 bool level_swap(struct device_level *level_dst, uint32_t tree_dst, struct device_level *level_src, uint32_t tree_src);
 

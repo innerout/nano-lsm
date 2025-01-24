@@ -286,6 +286,13 @@ bool level_zero(struct device_level *level, uint32_t tree_id)
 	return true;
 }
 
+void level_set_root(struct device_level *level, uint32_t tree_id)
+{
+	assert(level);
+	assert(level->level_id > 0);
+	level->guard_table[tree_id] = NULL;
+}
+
 bool level_swap(struct device_level *level_dst, uint32_t tree_dst, struct device_level *level_src, uint32_t tree_src)
 {
 	level_dst->level_size[tree_dst] = level_src->level_size[tree_src];
