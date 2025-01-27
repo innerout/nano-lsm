@@ -11,10 +11,9 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#pragma once
-#include "../btree/conf.h"
-#include "device_structures.h"
-#include "log_structures.h"
+#ifndef MEM_STRUCTURES_H
+#define MEM_STRUCTURES_H
+
 #include <pthread.h>
 #include <stdint.h>
 
@@ -26,3 +25,4 @@ struct mem_bitmap_word {
 	uint8_t start_bit;
 	uint8_t end_bit;
 } __attribute__((packed, aligned(16)));
+#endif

@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#ifndef VOLUME_MANAGER_H
+#define VOLUME_MANAGER_H
 #include "../btree/conf.h"
 #include "device_structures.h"
 #include "mem_structures.h"
@@ -125,3 +126,4 @@ struct pr_db_superblock *get_db_superblock(struct volume_descriptor *volume_desc
 **/
 void read_dev_offt_into_buffer(char *buffer, const uint32_t start, const uint32_t size, const off_t dev_offt,
 			       const int fd, const char *error_message);
+#endif // VOLUME_MANAGER_H
