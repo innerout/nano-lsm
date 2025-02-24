@@ -51,7 +51,7 @@ void pr_unlock_db_superblock(struct db_descriptor *db_desc);
  * @param db_options the options of the database
  */
 void pr_flush_compaction(struct db_descriptor *db_desc, const struct par_db_options *db_options, uint8_t level_id,
-			 uint8_t tree_id, uint64_t txn_id);
+			 uint8_t tree_id, uint64_t txn_id, uint8_t src_level_id);
 
 void pr_recover_L0(struct db_descriptor *db_desc);
 

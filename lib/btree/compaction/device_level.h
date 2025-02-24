@@ -291,6 +291,17 @@ void level_destroy(struct device_level *level);
 */
 bool level_has_overflow(struct device_level *level, uint8_t tree_id);
 
+/**
+ * @brief Check if the last level has reached its maximum size.
+ * @param level pointer to the last device level object
+ * @param tree_id tree of the level to check
+ * @param semi_last_level_size max size of the semi last level
+ */
+bool last_level_has_overflow(const struct device_level *level, uint8_t tree_id,
+			     const struct device_level *semi_last_level);
+
+bool level_has_data(const struct device_level *level, uint8_t tree_id);
+
 uint64_t level_get_max_size(struct device_level *level);
 
 typedef void *compaction_func(void *compaction_request);
@@ -424,3 +435,11 @@ bool level_comp_scanner_get_curr(struct level_compaction_scanner *comp_scanner, 
  */
 bool level_comp_scanner_close(struct level_compaction_scanner *comp_scanner);
 #endif
+
+void print_level(struct device_level *level);
+
+/**
+ * @brief Sets the level to the maximum size mainly used for testing purposes
+ * @param level pointer to the device level object
+ */
+void set_device_level_to_max_size(struct device_level *level);

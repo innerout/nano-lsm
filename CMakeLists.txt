@@ -247,7 +247,16 @@ if(ENABLE_FLTO)
   endif()
 endif()
 
-string(APPEND CMAKE_C_FLAGS_DEBUG " -ggdb3 -Og -gz")
+string(
+  APPEND
+  CMAKE_C_FLAGS_DEBUG
+  " -ggdb3 -Og -gz -fno-eliminate-unused-debug-symbols -fno-eliminate-unused-debug-types"
+)
+string(
+  APPEND
+  CMAKE_CXX_FLAGS_DEBUG
+  " -ggdb3 -Og -gz -fno-eliminate-unused-debug-symbols -fno-eliminate-unused-debug-types"
+)
 string(APPEND CMAKE_C_FLAGS_RELEASE " -O2 -finline-functions -DNDEBUG")
 string(APPEND CMAKE_CXX_FLAGS_RELEASE " -std=gnu++11 -Wall")
 # string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--no-as-needed -lrt -lm -pthread

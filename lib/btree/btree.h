@@ -185,6 +185,8 @@ typedef struct db_descriptor {
 	int32_t group_id;
 	int32_t group_index;
 	bool gc_scanning_db;
+	bool split_in_action;
+	bool writes_enabled;
 	enum db_status db_state;
 	char dirty;
 } db_descriptor;

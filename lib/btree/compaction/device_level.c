@@ -78,12 +78,15 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
 	MUTEX_INIT(&level->level_allocation_lock, NULL);
 
 	level->max_level_size = l0_size;
-	if (level_id != MAX_LEVELS - 1) {
-		for (uint32_t i = 1; i <= level_id; i++)
-			level->max_level_size = level->max_level_size * growth_factor;
-	} else {
-		level->max_level_size = UINT64_MAX;
-	}
+	// if (level_id != MAX_LEVELS - 1) {
+	for (uint32_t i = 1; i <= level_id; i++)
+		level->max_level_size = level->max_level_size * growth_factor;
+
+	// TODO(gxanth): Uncomment the code below to enable the last level to have unlimited size
+	/* if (level_id == MAX_LEVELS - 1) { */
+	/* 	level->max_level_size = UINT64_MAX; */
+	/* } */
+
 	// log_debug("Level_id: %u has max level size of: %lu", level_id, level->max_level_size);
 
 	dev_leaf_register(&level->level_leaf_api);
@@ -99,9 +102,10 @@ struct device_level *level_create_fresh(uint32_t level_id, uint32_t l0_size, uin
 struct device_level *level_restore_from_device(uint32_t level_id, struct pr_db_superblock *superblock,
 					       uint32_t num_trees, uint64_t l0_size, uint32_t growth_factor)
 {
+	assert(level_id < MAX_LEVELS);
+
 	/*restore now persistent state of all levels*/
 	struct device_level *level = level_create_fresh(level_id, l0_size, growth_factor);
-
 	for (uint32_t tree_id = 0; tree_id < num_trees; tree_id++) {
 		/*level size in B*/
 		level->level_size[tree_id] = superblock->level_size[level_id][tree_id];
@@ -249,6 +253,18 @@ bool level_has_overflow(struct device_level *level, uint8_t tree_id)
 	return level->level_size[tree_id] >= level->max_level_size;
 }
 
+bool last_level_has_overflow(const struct device_level *level, uint8_t tree_id,
+			     const struct device_level *semi_last_level)
+{
+	return level->level_size[tree_id] >= semi_last_level->max_level_size * 4 &&
+	       level->level_size[tree_id] > level->max_level_size;
+}
+
+bool level_has_data(const struct device_level *level, uint8_t tree_id)
+{
+	return level->level_size[tree_id] > 0;
+}
+
 bool level_start_comp_thread(struct device_level *level, compaction_func func, void *args)
 {
 	if (!level->compaction_in_progress) {
@@ -277,10 +293,10 @@ bool level_set_medium_in_place_seg_offt(struct device_level *level, uint64_t seg
 bool level_zero(struct device_level *level, uint32_t tree_id)
 {
 	level->level_size[tree_id] = 0;
-	// level->first_segment[tree_id] = NULL;
-	// level->last_segment[tree_id] = NULL;
-	// level->offset[tree_id] = 0;
-	// level->root[tree_id] = NULL;
+	/* level->first_segment[tree_id] = NULL; */
+	/* level->last_segment[tree_id] = NULL; */
+	/* level->offset[tree_id] = 0; */
+	/* level->root[tree_id] = NULL; */
 	level->num_level_keys[tree_id] = 0;
 	level->guard_table[tree_id] = NULL;
 	return true;
@@ -731,8 +747,28 @@ bool level_comp_scanner_get_curr(struct level_compaction_scanner *comp_scanner, 
 
 bool level_comp_scanner_close(struct level_compaction_scanner *comp_scanner)
 {
+	// check if comp scanner has iterated over all kvs
+	assert(minos_iter_is_valid(&comp_scanner->iter) == false);
 	free(comp_scanner->leaf_iter);
 	free(comp_scanner->IO_buffer);
 	free(comp_scanner);
 	return true;
+}
+
+void print_level(struct device_level *level)
+{
+	(void)level;
+	log_debug("Level_id: %u", level->level_id);
+
+	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
+		// print the roots
+		log_debug("Tree_id: %u level_size: %lu num_keys: %ld", i, level->level_size[i],
+			  level->num_level_keys[i]);
+		log_debug("Guard table: %p", level->guard_table[i]);
+	}
+}
+
+void set_device_level_to_max_size(struct device_level *level)
+{
+	level->max_level_size = UINT64_MAX;
 }

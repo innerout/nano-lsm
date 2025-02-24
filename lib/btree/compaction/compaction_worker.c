@@ -257,16 +257,36 @@ static void lock_to_update_levels_after_compaction(struct compaction_request *co
 
 static void lock_to_update_levels_after_compaction_split(struct compaction_request *comp_req)
 {
+	assert(0 == comp_req->src_level);
+	assert(0 == comp_req->src_tree);
+	assert(MAX_LEVELS - 1 == comp_req->dst_level);
+	assert(1 == comp_req->dst_tree);
+
 	if (RWLOCK_WRLOCK(&(comp_req->db_desc->L0.guard_of_level.rx_lock))) {
 		log_fatal("Failed to acquire guard lock");
 		BUG_ON();
 	}
 	spin_loop(&comp_req->db_desc->L0.active_operations, 0);
-	level_enter_as_writer(comp_req->db_desc->dev_levels[comp_req->src_level]);
 	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id)
 		level_enter_as_writer(comp_req->db_desc->dev_levels[level_id]);
 
 	MUTEX_LOCK(&comp_req->db_desc->flush_L0_lock);
+}
+static void unlock_to_update_levels_after_compaction_split(struct compaction_request *comp_req)
+{
+	assert(0 == comp_req->src_level);
+	assert(0 == comp_req->src_tree);
+	assert(MAX_LEVELS - 1 == comp_req->dst_level);
+	assert(1 == comp_req->dst_tree);
+
+	if (RWLOCK_UNLOCK(&(comp_req->db_desc->L0.guard_of_level.rx_lock))) {
+		log_fatal("Failed to release guard lock");
+		BUG_ON();
+	}
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id)
+		level_leave_as_writer(comp_req->db_desc->dev_levels[level_id]);
+
+	MUTEX_UNLOCK(&comp_req->db_desc->flush_L0_lock);
 }
 
 static void unlock_to_update_levels_after_compaction(struct compaction_request *comp_req)
@@ -283,21 +303,10 @@ static void unlock_to_update_levels_after_compaction(struct compaction_request *
 	MUTEX_UNLOCK(&comp_req->db_desc->flush_L0_lock);
 }
 
-static void unlock_to_update_levels_after_compaction_split(struct compaction_request *comp_req)
-{
-	if (RWLOCK_UNLOCK(&(comp_req->db_desc->L0.guard_of_level.rx_lock))) {
-		log_fatal("Failed to acquire guard lock");
-		BUG_ON();
-	}
-	level_leave_as_writer(comp_req->db_desc->dev_levels[comp_req->src_level]);
-	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id)
-		level_leave_as_writer(comp_req->db_desc->dev_levels[level_id]);
-
-	MUTEX_UNLOCK(&comp_req->db_desc->flush_L0_lock);
-}
-
 static void comp_zero_level(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
 {
+	assert(level_id != MAX_LEVELS - 1);
+
 	if (0 == level_id) {
 		db_desc->L0.level_size[tree_id] = 0;
 		db_desc->L0.first_segment[tree_id] = NULL;
@@ -418,25 +427,6 @@ static void compact_level_direct_IO(struct db_handle *handle, struct compaction_
 					NULL :
 					level_comp_scanner_init(handle->db_desc->dev_levels[comp_req->dst_level], 0,
 								SST_SIZE, handle->db_desc->db_volume->vol_fd);
-
-	//TODO: geostyl callback
-	//  parallax_callbacks_t par_callbacks = comp_req->db_desc->parallax_callbacks;
-	//  if (are_parallax_callbacks_set(par_callbacks)) {
-	// 	struct parallax_callback_funcs par_cb = parallax_get_callbacks(par_callbacks);
-	// 	void *context = parallax_get_context(par_callbacks);
-	// 	uint64_t small_log_tail_dev_offt = UINT64_MAX;
-	// 	uint64_t big_log_tail_dev_offt = UINT64_MAX;
-	// 	if (!compaction_get_src_level(comp_req)) {
-	// 		small_log_tail_dev_offt = handle->db_desc->small_log.tail_dev_offt;
-	// 		big_log_tail_dev_offt = handle->db_desc->big_log.tail_dev_offt;
-	// 	}
-	// 	if (par_cb.compaction_started_cb)
-	// 		par_cb.compaction_started_cb(context, small_log_tail_dev_offt, big_log_tail_dev_offt,
-	// 					     compaction_get_src_level(comp_req),
-	// 					     compaction_get_src_tree(comp_req), comp_req->wcursor);
-	// }
-
-	//initialize LRU cache for storing chunks of segments when medium log goes in place
 
 	struct medium_log_LRU_cache *mlog_cache =
 		comp_req->dst_level == handle->db_desc->level_medium_inplace ? mlog_cache_init_LRU(handle) : NULL;
@@ -596,7 +586,7 @@ static void compact_with_empty_destination_level(struct compaction_request *comp
 	level_swap(dst_level, comp_req->dst_tree, src_level, comp_req->src_tree);
 
 	pr_flush_compaction(comp_req->db_desc, comp_req->db_options, comp_req->dst_level, comp_req->dst_tree,
-			    comp_req->txn_id);
+			    comp_req->txn_id, comp_req->src_level);
 
 	level_swap(dst_level, 0, dst_level, 1);
 	log_debug("Flushed compaction (Swap levels) successfully from src[%u][%u] to dst[%u][%u]", comp_req->src_level,
@@ -607,6 +597,30 @@ static void compact_with_empty_destination_level(struct compaction_request *comp
 	log_debug("Swapped levels %d to %d successfully", comp_req->src_level, comp_req->dst_level);
 }
 
+void split_preconditions(struct compaction_request *comp_req)
+{
+	assert(0 == comp_req->src_level);
+	assert(0 == comp_req->src_tree);
+	assert(MAX_LEVELS - 1 == comp_req->dst_level);
+	assert(1 == comp_req->dst_tree);
+	db_descriptor *db_desc = comp_req->db_desc;
+
+	// assert all level sizes > 0
+	assert(db_desc->L0.level_size[comp_req->src_tree] > 0);
+	//print the address of the L0 root
+	log_trace("L0 root: %p", db_desc->L0.root[comp_req->src_tree]);
+	// print src and dst tree
+	log_trace("Src level: %u, Src tree: %u, Dst level: %u, Dst tree: %u", comp_req->src_level, comp_req->src_tree,
+		  comp_req->dst_level, comp_req->dst_tree);
+	log_trace("L0 size: %lu", db_desc->L0.level_size[comp_req->src_tree]);
+	// trace txn_id
+	log_trace("Txn_id: %lu", comp_req->txn_id);
+	// then all other levels
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
+		assert(level_get_size(db_desc->dev_levels[level_id], 0) > 0);
+		log_trace("Level %u size: %lu", level_id, level_get_size(db_desc->dev_levels[level_id], 0));
+	}
+}
 void *compaction(void *compaction_request)
 {
 	db_handle handle;
@@ -621,22 +635,23 @@ void *compaction(void *compaction_request)
 	handle.volume_desc = compaction_get_volume_desc(comp_req);
 	memcpy(&handle.db_options, comp_req->db_options, sizeof(struct par_db_options));
 	bool enable_bfs = false;
-
-	if (comp_req->src_level == 0 && comp_req->dst_level == MAX_LEVELS - 1) {
-		/* assert(0 && "Not supported yet"); */
-		// we need to involve all levels to support the split operation
-		// Lock L0 and flush the log tail
+	assert(comp_req->src_level != MAX_LEVELS - 1);
+	bool is_split_compaction = comp_req->src_level == 0 && comp_req->dst_level == MAX_LEVELS - 1;
+	if (is_split_compaction) {
 		RWLOCK_WRLOCK(&handle.db_desc->L0.guard_of_level.rx_lock);
 		spin_loop(&handle.db_desc->L0.active_operations, 0);
+		split_preconditions(comp_req);
 		pr_flush_log_tail(comp_req->db_desc, &comp_req->db_desc->big_log);
+
 		comp_req->L0_scanner =
 			L0_scanner_init_compaction_scanner(&handle, comp_req->src_level, comp_req->src_tree);
 		RWLOCK_UNLOCK(&handle.db_desc->L0.guard_of_level.rx_lock);
-
 		uint64_t total_data_size = 0;
 		struct sh_heap *m_heap = sh_alloc_heap();
 		sh_init_heap(m_heap, comp_req->src_level, MIN_HEAP, comp_req->db_desc);
-
+		struct sh_heap_node src_heap_node = { 0 };
+		comp_fill_src_heap_node(comp_req, &src_heap_node);
+		sh_insert_heap_node(m_heap, &src_heap_node);
 		struct level_compaction_scanner *scanners[MAX_LEVELS] = { 0 };
 		for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
 			scanners[level_id] = level_comp_scanner_init(comp_req->db_desc->dev_levels[level_id], 0,
@@ -650,8 +665,6 @@ void *compaction(void *compaction_request)
 		/* uint64_t split_point = total_data_size / 2; */
 		/* uint64_t accumulated_size = 0; */
 
-		uint8_t dst_level = MAX_LEVELS - 1;
-
 		struct sh_heap_node min_heap_node = { 0 };
 		struct sh_heap_node next_heap_node = { 0 };
 		/* char kv_sep_buf[KV_SEP2_MAX_SIZE]; */
@@ -661,7 +674,6 @@ void *compaction(void *compaction_request)
 			if (min_heap_node.duplicate) {
 				goto refill;
 			}
-
 			//Omit intentionally MEDIUM LOG IN PLACE LOGIC add it later
 			// for L0->L1
 			struct kv_splice_base splice = min_heap_node.splice;
@@ -678,7 +690,7 @@ void *compaction(void *compaction_request)
 			}
 
 			level_increase_size(handle.db_desc->dev_levels[comp_req->dst_level],
-					    kv_splice_base_get_size(&splice), 1);
+					    kv_splice_base_get_size(&splice), comp_req->dst_tree);
 			level_inc_num_keys(handle.db_desc->dev_levels[comp_req->dst_level], comp_req->dst_tree, 1);
 		refill:
 
@@ -697,53 +709,23 @@ void *compaction(void *compaction_request)
 		handle.db_desc->dirty = 0x01;
 
 		L0_scanner_close(comp_req->L0_scanner);
-		// sum all levels sizes
-		/* int sum = handle.db_desc->L0.level_size[comp_req->src_tree]; */
-		/* for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) { */
-		/* 	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) { */
-		/* 		log_trace("Level[%u][%u] size = %lu", level_id, tree_id, */
-		/* 			  level_get_size(handle.db_desc->dev_levels[level_id], tree_id)); */
-		/* 		sum += level_get_size(handle.db_desc->dev_levels[level_id], tree_id); */
-		/* 	} */
-		/* } */
-		/* log_trace("Sum of all levels = %d", sum); */
+
 		for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
 			level_comp_scanner_close(scanners[level_id]);
 		}
-
 		mark_segment_space(&handle, m_heap->dups, comp_req->txn_id);
-		comp_zero_level(handle.db_desc, 0, comp_req->src_tree);
-		// print all L0 sizes
-
-		for (uint8_t level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
-			comp_zero_level(handle.db_desc, level_id, 0);
-			level_set_root(handle.db_desc->dev_levels[level_id], 0);
-		}
 		sh_destroy_heap(m_heap);
 
-		pr_flush_compaction(comp_req->db_desc, comp_req->db_options, comp_req->dst_level, comp_req->dst_tree,
-				    comp_req->txn_id);
-		level_swap(handle.db_desc->dev_levels[dst_level], 0, handle.db_desc->dev_levels[dst_level], 1);
-		bt_set_db_status(db_desc, BT_NO_COMPACTION, comp_req->src_level, comp_req->src_tree);
-		for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
-			level_set_compaction_done(handle.db_desc->dev_levels[level_id]);
-			// set root of the level to NULL
-		}
-
+		compaction_split_close(comp_req);
 		compactiond_notify_all(comp_req->db_desc->compactiond);
 		compactiond_interrupt(comp_req->db_desc->compactiond);
-		/* log_trace("Compaction finished"); */
-		/* // print the size and trees of all levels */
-		/* for (uint8_t level_id = 0; level_id < MAX_LEVELS; ++level_id) { */
-		/* 	for (uint8_t tree_id = 0; tree_id < NUM_TREES_PER_LEVEL; ++tree_id) { */
-		/* 		if (level_id == 0) { */
-		/* 			log_trace("L0 size[%u] = %lu", tree_id, handle.db_desc->L0.level_size[tree_id]); */
-		/* 		} else { */
-		/* 			log_trace("Level[%u][%u] size = %lu", level_id, tree_id, */
-		/* 				  level_get_size(handle.db_desc->dev_levels[level_id], tree_id)); */
-		/* 		} */
-		/* 	} */
-		/* } */
+
+		log_trace("L0 size: %lu", db_desc->L0.level_size[comp_req->src_tree]);
+		// then all other levels
+		for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
+			log_trace("Level %u size: %lu", level_id, level_get_size(db_desc->dev_levels[level_id], 0));
+		}
+
 		free(comp_req);
 	} else {
 		if (comp_req->src_level == 0 || comp_req->dst_level == handle.db_desc->level_medium_inplace ||
@@ -762,9 +744,10 @@ void *compaction(void *compaction_request)
 
 		level_set_compaction_done(db_desc->dev_levels[comp_req->dst_level]);
 
-		if (comp_req->src_level == 0)
-			/*wake up clients*/
+		if (comp_req->src_level == 0) {
+			comp_req->db_desc->writes_enabled = true;
 			compactiond_notify_all(comp_req->db_desc->compactiond);
+		}
 
 		compactiond_interrupt(comp_req->db_desc->compactiond);
 		free(comp_req);
@@ -822,7 +805,7 @@ void compaction_close(struct compaction_request *comp_req)
 
 	/*Finally persist compaction */
 	pr_flush_compaction(comp_req->db_desc, comp_req->db_options, comp_req->dst_level, comp_req->dst_tree,
-			    comp_req->txn_id);
+			    comp_req->txn_id, comp_req->src_level);
 
 	level_swap(dest_level, 0, dest_level, 1);
 
@@ -833,13 +816,9 @@ void compaction_split_close(struct compaction_request *comp_req)
 {
 	assert(comp_req);
 
-	struct db_handle hd = { .db_desc = compaction_get_db_desc(comp_req),
-				.volume_desc = compaction_get_volume_desc(comp_req) };
-
-	struct device_level *dest_level = hd.db_desc->dev_levels[comp_req->dst_level];
-
 	lock_to_update_levels_after_compaction_split(comp_req);
-
+	db_handle hd = { .db_desc = compaction_get_db_desc(comp_req),
+			 .volume_desc = compaction_get_volume_desc(comp_req) };
 	uint64_t space_freed = 0;
 	/*Free L_(i+1)*/
 	space_freed += seg_free_L0(hd.db_desc, compaction_get_src_tree(comp_req));
@@ -848,17 +827,30 @@ void compaction_split_close(struct compaction_request *comp_req)
 						comp_req->txn_id);
 
 	(void)space_freed;
-	log_debug("Freed space %lu MB from DB:%s source level %u", space_freed / (1024 * 1024L),
-		  comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
+	// log_debug("Freed space %lu MB from DB:%s source level %u", space_freed / (1024 * 1024L),
+	// 	  comp_req->db_desc->db_superblock->db_name, comp_req->src_level);
 
-	comp_zero_level(hd.db_desc, comp_req->src_level, comp_req->src_tree);
-	for (uint8_t level_id = 1; level_id < MAX_LEVELS - 1; ++level_id)
-		comp_zero_level(hd.db_desc, level_id, 0);
 	/*Finally persist compaction */
+	comp_zero_level(comp_req->db_desc, comp_req->src_level, comp_req->src_tree);
+
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
+		comp_zero_level(comp_req->db_desc, level_id, 0);
+		/* level_set_root(comp_req->db_desc->dev_levels[level_id], 0); */
+	}
 	pr_flush_compaction(comp_req->db_desc, comp_req->db_options, comp_req->dst_level, comp_req->dst_tree,
-			    comp_req->txn_id);
+			    comp_req->txn_id, comp_req->src_level);
 
-	level_swap(dest_level, 0, dest_level, 1);
+	level_swap(comp_req->db_desc->dev_levels[comp_req->dst_level], 0,
+		   comp_req->db_desc->dev_levels[comp_req->dst_level], 1);
+	/* TODO(gxanth):remove this before split is implemented */
+	set_device_level_to_max_size(comp_req->db_desc->dev_levels[comp_req->dst_level]);
 
+	comp_req->db_desc->writes_enabled = true;
+	comp_req->db_desc->split_in_action = false;
+
+	bt_set_db_status(comp_req->db_desc, BT_NO_COMPACTION, 0, comp_req->src_tree);
+	for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
+		level_set_compaction_done(comp_req->db_desc->dev_levels[level_id]);
+	}
 	unlock_to_update_levels_after_compaction_split(comp_req);
 }

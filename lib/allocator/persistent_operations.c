@@ -258,22 +258,27 @@ static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id,
 }
 
 void pr_flush_compaction(struct db_descriptor *db_desc, const struct par_db_options *db_options, uint8_t level_id,
-			 uint8_t tree_id, uint64_t txn_id)
+			 uint8_t tree_id, uint64_t txn_id, uint8_t src_level_id)
 {
 	if (level_id == 1) {
 		pr_flush_L0_to_L1(db_desc, db_options, level_id, tree_id, txn_id);
 		return;
 	}
-
+	/* TODO(gxanth): Note here the design of the manifest log needs rethinking.  */
 	if (level_id == db_desc->level_medium_inplace) {
 		pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id, txn_id);
 		return;
 	}
 
 	pr_lock_db_superblock(db_desc);
-
-	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
-
+	if (src_level_id == 0 && level_id == MAX_LEVELS - 1) {
+		pr_flush_allocation_log_and_level_info(db_desc, src_level_id, level_id, tree_id, txn_id);
+		for (uint8_t i = 1; i < MAX_LEVELS - 1; i++) {
+			pr_flush_allocation_log_and_level_info(db_desc, i, level_id, tree_id, txn_id);
+		}
+	} else {
+		pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
+	}
 	pr_unlock_db_superblock(db_desc);
 	regl_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }

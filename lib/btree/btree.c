@@ -452,6 +452,8 @@ db_handle *internal_db_open(struct volume_descriptor *volume_desc, par_db_option
 	handle = calloc(1UL, sizeof(db_handle));
 	handle->db_desc = db_desc;
 	handle->volume_desc = db_desc->db_volume;
+	handle->db_desc->writes_enabled = true;
+	handle->db_desc->split_in_action = false;
 	//deep copy db_options
 	memcpy(&handle->db_options, db_options, sizeof(struct par_db_options));
 
@@ -684,15 +686,15 @@ finish:
 static bool is_level0_available(struct db_descriptor *db_desc, uint8_t level_id, bool abort_on_compaction,
 				uint8_t rwlock)
 {
-	if (level_id > 0)
-		return true;
-
+	assert(level_id == 0);
+retry:;
 	int active_tree = db_desc->L0.active_tree;
 
 	uint8_t relock = 0;
-	while (db_desc->L0.level_size[active_tree] > db_desc->L0.max_level_size) {
+	while (db_desc->L0.level_size[active_tree] > db_desc->L0.max_level_size || !db_desc->writes_enabled) {
 		active_tree = db_desc->L0.active_tree;
-		if (db_desc->L0.level_size[active_tree] > db_desc->L0.max_level_size) {
+		if (db_desc->L0.level_size[active_tree] > db_desc->L0.max_level_size || !db_desc->writes_enabled) {
+			/* log_trace("Blocking L0 is full"); */
 			if (!relock) {
 				/* Release the lock of level 0 to allow compactions to progress. */
 				RWLOCK_UNLOCK(&db_desc->L0.guard_of_level.rx_lock);
@@ -703,6 +705,7 @@ static bool is_level0_available(struct db_descriptor *db_desc, uint8_t level_id,
 			if (abort_on_compaction)
 				return false;
 			compactiond_wait(db_desc->compactiond);
+			/* log_trace("Unblocking L0 is available"); */
 		}
 		active_tree = db_desc->L0.active_tree;
 	}
@@ -711,6 +714,11 @@ static bool is_level0_available(struct db_descriptor *db_desc, uint8_t level_id,
 	if (relock)
 		rwlock == 1 ? RWLOCK_RDLOCK(&db_desc->L0.guard_of_level.rx_lock) :
 			      RWLOCK_WRLOCK(&db_desc->L0.guard_of_level.rx_lock);
+
+	if (!db_desc->writes_enabled) {
+		RWLOCK_UNLOCK(&db_desc->L0.guard_of_level.rx_lock);
+		goto retry;
+	}
 	return true;
 }
 
@@ -1545,8 +1553,7 @@ lock_table *find_lock_position(const lock_table **table, struct node_header *nod
 
 void _unlock_upper_levels(lock_table *node[], unsigned size, unsigned release)
 {
-	unsigned i;
-	for (i = release; i < size; ++i)
+	for (unsigned i = release; i < size; ++i)
 		if (RWLOCK_UNLOCK(&node[i]->rx_lock) != 0) {
 			log_fatal("ERROR unlocking");
 			BUG_ON();

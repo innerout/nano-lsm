@@ -33,7 +33,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <unistd.h>
 // IWYU pragma: no_forward_declare index_node
 
 struct compaction_daemon {
@@ -63,17 +63,32 @@ static struct compaction_request *compactiond_compact_L0(struct compaction_daemo
 	const struct L0_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
 	struct device_level *level_1 = daemon->db_handle->db_desc->dev_levels[1];
 
-	if (level_0->tree_status[L0_tree_id] != BT_NO_COMPACTION)
+	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
+		if (level_0->tree_status[i] == BT_COMPACTION_IN_PROGRESS) {
+			log_trace("Not compacting L0 due to %u being compacted", i);
+			return NULL;
+		}
+	}
+	L0_tree_id = level_0->active_tree;
+	if (level_0->tree_status[L0_tree_id] != BT_NO_COMPACTION) {
+		log_trace("Not compacting L0 due to %u being compacted", L0_tree_id);
 		return NULL;
+	}
 
-	if (level_0->level_size[L0_tree_id] < level_0->max_level_size)
+	if (level_0->level_size[L0_tree_id] < level_0->max_level_size) {
+		log_trace("Level 0 is not yet full %u", L0_tree_id);
 		return NULL;
+	}
 
-	if (level_is_compacting(daemon->db_handle->db_desc->dev_levels[1]))
+	if (level_is_compacting(daemon->db_handle->db_desc->dev_levels[1])) {
+		log_trace("Not compacting L0 Level 1 is compacting");
 		return NULL;
+	}
 
-	if (level_has_overflow(level_1, L1_tree_id))
+	if (level_has_overflow(level_1, L1_tree_id)) {
+		log_trace("Level 1 is full cannot compact L0");
 		return NULL;
+	}
 
 	bt_set_db_status(daemon->db_handle->db_desc, BT_COMPACTION_IN_PROGRESS, 0, L0_tree_id);
 	level_set_comp_in_progress(daemon->db_handle->db_desc->dev_levels[1]);
@@ -93,8 +108,38 @@ static void *compactiond_run(void *args)
 	pthread_setname_np(pthread_self(), "compactiond");
 
 	while (1) {
-		sem_wait(&daemon->compaction_daemon_interrupts);
+	start:
+		sleep(1);
+		// if a level is being compacted continue
+		for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
+			if (level_is_compacting(db_desc->dev_levels[level_id])) {
+				goto start;
+			}
+		}
+		// check if L0 is compacting
+		for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
+			if (db_desc->L0.tree_status[i] == BT_COMPACTION_IN_PROGRESS) {
+				goto start;
+			}
+		}
+		// if all level0 trees are empty wakeup clients
+		bool L0_is_empty = true;
+		for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
+			if (db_desc->L0.level_size[i] > 0) {
+				L0_is_empty = false;
+				break;
+			}
+		}
 
+		if (L0_is_empty && !db_desc->split_in_action && db_desc->writes_enabled) {
+			MUTEX_LOCK(&daemon->barrier_lock);
+			if (pthread_cond_broadcast(&daemon->barrier) != 0) {
+				log_fatal("Failed to wake up stopped clients");
+				BUG_ON();
+			}
+			MUTEX_UNLOCK(&daemon->barrier_lock);
+		}
+		// sem_wait(&daemon->compaction_daemon_interrupts);
 		if (db_desc->db_state == DB_TERMINATE_COMPACTION_DAEMON) {
 			log_warn("Compaction daemon instructed to exit because DB %s is closing, "
 				 "Bye bye!...",
@@ -109,7 +154,7 @@ static void *compactiond_run(void *args)
 
 		int active_tree = db_desc->L0.active_tree;
 		if (db_desc->L0.tree_status[active_tree] == BT_COMPACTION_IN_PROGRESS) {
-			int next_active_tree = active_tree < NUM_TREES_PER_LEVEL - 1 ? active_tree + 1 : 0;
+			uint8_t next_active_tree = active_tree < NUM_TREES_PER_LEVEL - 1 ? active_tree + 1 : 0;
 			if (db_desc->L0.tree_status[next_active_tree] == BT_NO_COMPACTION) {
 				/*Acquire guard lock and wait writers to finish*/
 				if (RWLOCK_WRLOCK(&db_desc->L0.guard_of_level.rx_lock)) {
@@ -158,7 +203,6 @@ static void *compactiond_run(void *args)
 			compaction_set_dst_tree(comp_req, 1);
 			assert(db_desc->L0.root[compaction_get_src_tree(comp_req)] != NULL);
 
-			//TODO: geostyl callback
 			parallax_callbacks_t par_callbacks = db_desc->parallax_callbacks;
 			if (are_parallax_callbacks_set(par_callbacks) &&
 			    handle->db_options.options[PRIMARY_MODE].value) {
@@ -174,36 +218,71 @@ static void *compactiond_run(void *args)
 				BUG_ON();
 			}
 			comp_req = NULL;
+			goto start;
 		}
 
 		bool split_LSM = true;
-
 		for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
 			bool level_compacting = level_is_compacting(db_desc->dev_levels[level_id]);
 			bool level_overflow = level_has_overflow(db_desc->dev_levels[level_id], 0);
+			if (level_id == MAX_LEVELS - 1) {
+				level_overflow = last_level_has_overflow(db_desc->dev_levels[level_id], 0,
+									 db_desc->dev_levels[level_id - 1]);
+			}
 
 			if (level_compacting || !level_overflow) {
 				split_LSM = false;
 				break;
 			}
 		}
-
+		// finally check if L0 is full
+		if (db_desc->L0.level_size[daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL] <
+		    db_desc->L0.max_level_size) {
+			split_LSM = false;
+		}
+		for (uint8_t i = 0; i < NUM_TREES_PER_LEVEL; i++) {
+			if (db_desc->L0.tree_status[i] == BT_COMPACTION_IN_PROGRESS) {
+				split_LSM = false;
+				break;
+			}
+		}
+		active_tree = db_desc->L0.active_tree;
 		if (split_LSM) {
-			log_info("Splitting LSM tree for db %s", db_desc->db_superblock->db_name);
-			int next_L0_tree = daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL;
+			//print level sizes
+			log_trace("L0 size %lu",
+				  db_desc->L0.level_size[daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL]);
+			for (uint8_t i = 1; i < MAX_LEVELS; i++) {
+				log_trace("Level %u size: %lu", i, level_get_size(db_desc->dev_levels[i], 0));
+			}
+			log_trace("Splitting LSM tree for L0 tree id %u",
+				  daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL);
+			uint8_t next_L0_tree = active_tree; //daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL;
 			struct compaction_request *split_comp_req =
 				compaction_create_req(db_desc, &handle->db_options, UINT64_MAX, UINT64_MAX, 0,
-						      next_L0_tree, MAX_LEVELS - 1, 0);
-			assert(db_desc->L0.tree_status[next_L0_tree] == BT_NO_COMPACTION);
-			bt_set_db_status(db_desc, BT_COMPACTION_IN_PROGRESS, 0, next_L0_tree);
+						      next_L0_tree, MAX_LEVELS - 1, 1);
 
+			assert(db_desc->L0.tree_status[next_L0_tree] == BT_NO_COMPACTION);
+			/*Acquire guard lock and wait writers to finish*/
+			if (RWLOCK_WRLOCK(&db_desc->L0.guard_of_level.rx_lock)) {
+				log_fatal("Failed to acquire guard lock");
+				BUG_ON();
+			}
+			spin_loop(&(db_desc->L0.active_operations), 0);
+			db_desc->writes_enabled = false;
+			db_desc->split_in_action = true;
+			bt_set_db_status(daemon->db_handle->db_desc, BT_COMPACTION_IN_PROGRESS, 0, next_L0_tree);
+			if (RWLOCK_UNLOCK(&db_desc->L0.guard_of_level.rx_lock)) {
+				log_fatal("Failed to release guard lock");
+				BUG_ON();
+			}
 			for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
 				assert(level_is_compacting(db_desc->dev_levels[level_id]) == false);
 				level_set_comp_in_progress(db_desc->dev_levels[level_id]);
 			}
-
+			compaction_set_dst_tree(split_comp_req, 1);
 			++daemon->next_L0_tree_to_compact;
 			level_start_comp_thread(db_desc->dev_levels[MAX_LEVELS - 1], compaction, split_comp_req);
+			goto start;
 		}
 
 		// rest of levels
@@ -211,24 +290,32 @@ static void *compactiond_run(void *args)
 			struct device_level *src_level = db_desc->dev_levels[level_id];
 			struct device_level *dst_level = db_desc->dev_levels[level_id + 1];
 
-			if (false == level_has_overflow(src_level, 0))
+			if (false == level_has_overflow(src_level, 0)) {
+				log_trace("src level is not full %d", level_id);
 				continue;
-			if (true == level_has_overflow(dst_level, 0))
+			}
+			if (true == level_has_overflow(dst_level, 0)) {
+				log_trace("Dest level is full %d", level_id + 1);
 				continue;
-			if (level_is_compacting(src_level))
+			}
+			if (level_is_compacting(src_level)) {
+				log_trace("src level is compacting %d", level_id);
 				continue;
-			if (level_is_compacting(dst_level))
+			}
+			if (level_is_compacting(dst_level)) {
+				log_trace("dst level is compacting %d", level_id + 1);
 				continue;
-
+			}
+			log_trace("Compacting level %d to %d", level_id, level_id + 1);
 			level_set_comp_in_progress(db_desc->dev_levels[level_id]);
 			level_set_comp_in_progress(db_desc->dev_levels[level_id + 1]);
 
 			//compaction request will get a txn in its constructor
 			struct compaction_request *comp_req_p = compaction_create_req(
 				db_desc, &handle->db_options, UINT64_MAX, UINT64_MAX, level_id, 0, level_id + 1, 1);
-
 			level_start_comp_thread(db_desc->dev_levels[compaction_get_dst_level(comp_req_p)], compaction,
 						comp_req_p);
+			break;
 		}
 	}
 }

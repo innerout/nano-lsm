@@ -29,7 +29,7 @@
 #include <unistd.h>
 #include <uthash.h>
 
-#define REGL_ALIGN_UP(number, alignment) (((number) + (alignment)-1) / (alignment) * (alignment))
+#define REGL_ALIGN_UP(number, alignment) (((number) + (alignment) - 1) / (alignment) * (alignment))
 /**
  * Writes synchronously to the device a chunk from a log segment.
  * */
@@ -369,7 +369,7 @@ uint64_t regl_start_txn(struct db_descriptor *db_desc)
 {
 	struct regl_log_descriptor *log_desc = db_desc->allocation_log;
 	uint64_t txn_id = __sync_fetch_and_add(&log_desc->txn_id, 1);
-	// log_debug("Staring transaction %lu", txn_id);
+	log_trace("Starting transaction %lu", txn_id);
 
 	/*check if (accidentally) txn exists already*/
 	struct regl_transaction *transaction;
@@ -510,6 +510,7 @@ void regl_apply_txn_buf_freeops_and_destroy(struct db_descriptor *db_desc, uint6
 	}
 
 	MUTEX_LOCK(&log_desc->trans_map_lock);
+	log_trace("Txn id %lu is removed from the transaction map", txn_id);
 	HASH_DEL(log_desc->trans_map, transaction);
 	MUTEX_UNLOCK(&log_desc->trans_map_lock);
 	free(transaction);
