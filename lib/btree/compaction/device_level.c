@@ -764,7 +764,7 @@ void print_level(struct device_level *level)
 		// print the roots
 		log_debug("Tree_id: %u level_size: %lu num_keys: %ld", i, level->level_size[i],
 			  level->num_level_keys[i]);
-		log_debug("Guard table: %p", level->guard_table[i]);
+		log_debug("Guard table: %p", (void *)level->guard_table[i]);
 	}
 }
 

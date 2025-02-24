@@ -550,7 +550,8 @@ bool sst_flush(struct sst *sst)
 
 	struct key_splice *first = sst_meta_get_first_guard(sst->meta);
 	struct key_splice *last = sst_meta_get_last_guard(sst->meta);
-
+	(void)first;
+	(void)last;
 	assert(sst->meta->header->first_guard_size);
 	assert(sst->meta->header->last_guard_size);
 
@@ -649,6 +650,7 @@ bool sst_key_exists(const struct sst_meta *sst, struct key_splice *key_splice)
 
 static void sst_header_print(struct sst_header *sst)
 {
+	(void)sst;
 	log_info("SST dev_offt = %lu", sst->sst_dev_offt);
 	log_info("SST level_id = %u", sst->level_id);
 	log_info("SST size = %u", sst->sst_size);

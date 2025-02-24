@@ -229,6 +229,7 @@ static ssize_t par_net_RPC(int sockfd, char *send_buffer, size_t send_buffer_len
 		msg_reply.msg_iovlen = 1;
 
 		ssize_t extra_bytes_received = recvmsg(sockfd, &msg_reply, 0);
+		(void)extra_bytes_received;
 		assert(extra_bytes_received + bytes_received == reply_header->total_bytes);
 	}
 
@@ -284,6 +285,7 @@ par_handle par_open(par_db_options *db_options, const char **error_message)
 	}
 
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
+	(void)reply_header;
 	assert(reply_header->opcode == OPCODE_OPEN);
 
 	par_handle ret_handle =
@@ -329,6 +331,7 @@ const char *par_close(par_handle handle)
 		return "Error with sending buffer";
 	}
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
+	(void)reply_header;
 	assert(reply_header->opcode == OPCODE_CLOSE);
 	struct par_net_close_rep *reply =
 		(struct par_net_close_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
@@ -398,6 +401,7 @@ struct par_put_metadata par_put(par_handle handle, struct par_key_value *key_val
 		return sample_return_value;
 	}
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
+	(void)reply_header;
 	assert(OPCODE_PUT == reply_header->opcode);
 	struct par_net_put_rep *reply =
 		(struct par_net_put_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
@@ -570,6 +574,7 @@ void par_delete(par_handle handle, struct par_key *key, const char **error_messa
 		return;
 	}
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_handle->recv_buffer;
+	(void)reply_header;
 	assert(OPCODE_DEL == reply_header->opcode);
 	struct par_net_del_rep *delete_reply =
 		(struct par_net_del_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];
@@ -618,6 +623,7 @@ static struct par_net_scan_rep *par_scan_get_next_batch(par_scanner scanner, par
 	// log_debug("Sending SCAN request to fetch next batch ... D O N E");
 	//-- reply part
 	struct par_net_header *reply_header = (struct par_net_header *)parallax_scanner->recv_buffer;
+	(void)reply_header;
 	assert(reply_header->opcode == OPCODE_SCAN);
 	struct par_net_scan_rep *reply =
 		(struct par_net_scan_rep *)(&parallax_scanner->recv_buffer[par_net_header_calc_size()]);
@@ -728,6 +734,8 @@ par_ret_code par_sync(par_handle handle)
 					     request->total_bytes, &parallax_handle->recv_buffer,
 					     parallax_handle->recv_buffer_size);
 	struct par_net_header *reply = (struct par_net_header *)parallax_handle->recv_buffer;
+	(void)bytes_received;
+	(void)reply;
 	assert(reply->total_bytes == bytes_received);
 	struct par_net_sync_rep *sync_reply =
 		(struct par_net_sync_rep *)&parallax_handle->recv_buffer[par_net_header_calc_size()];

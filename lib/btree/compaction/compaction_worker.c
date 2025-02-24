@@ -604,11 +604,11 @@ void split_preconditions(struct compaction_request *comp_req)
 	assert(MAX_LEVELS - 1 == comp_req->dst_level);
 	assert(1 == comp_req->dst_tree);
 	db_descriptor *db_desc = comp_req->db_desc;
-
+	(void)db_desc;
 	// assert all level sizes > 0
 	assert(db_desc->L0.level_size[comp_req->src_tree] > 0);
 	//print the address of the L0 root
-	log_trace("L0 root: %p", db_desc->L0.root[comp_req->src_tree]);
+	log_trace("L0 root: %p", (void *)db_desc->L0.root[comp_req->src_tree]);
 	// print src and dst tree
 	log_trace("Src level: %u, Src tree: %u, Dst level: %u, Dst tree: %u", comp_req->src_level, comp_req->src_tree,
 		  comp_req->dst_level, comp_req->dst_tree);

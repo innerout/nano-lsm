@@ -309,6 +309,8 @@ static bool add_sst_callback(void *value, void *cnxt)
 	level_add_ssts(db_desc->dev_levels[level_id], 1, &meta, 0);
 	struct key_splice *first = sst_meta_get_first_guard(meta);
 	struct key_splice *last = sst_meta_get_last_guard(meta);
+	(void)first;
+	(void)last;
 	log_debug("Added SST first: %.*s last: %.*s in level: %u", key_splice_get_key_size(first),
 		  key_splice_get_key_offset(first), key_splice_get_key_size(last), key_splice_get_key_offset(last),
 		  level_id);
@@ -687,9 +689,10 @@ static bool is_level0_available(struct db_descriptor *db_desc, uint8_t level_id,
 				uint8_t rwlock)
 {
 	assert(level_id == 0);
+	(void)level_id;
 retry:;
-	int active_tree = db_desc->L0.active_tree;
 
+	int active_tree = db_desc->L0.active_tree;
 	uint8_t relock = 0;
 	while (db_desc->L0.level_size[active_tree] > db_desc->L0.max_level_size || !db_desc->writes_enabled) {
 		active_tree = db_desc->L0.active_tree;

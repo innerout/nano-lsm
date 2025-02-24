@@ -231,6 +231,7 @@ static void server_check_arg(int argc, int option_id)
 
 static long server_parse_number(const char *str, const char *opt)
 {
+	(void)opt;
 	errno = 0;
 	long num = strtol(str, NULL, DECIMAL_BASE);
 	if (0 == errno)
@@ -267,6 +268,7 @@ static void server_set_address(struct server_options *opts, const char *arg)
 struct server_options *server_parse_argv_opts(int argc, char *restrict *restrict argv)
 {
 	if (argc <= 1) {
+		(void)USAGE_STRING;
 		log_fatal("%s", USAGE_STRING);
 		_exit(EXIT_FAILURE);
 	}
@@ -310,8 +312,10 @@ struct server_options *server_parse_argv_opts(int argc, char *restrict *restrict
 			server_options->growth_factor = strtoul(argv[i], NULL, 10);
 			++opt_num;
 		} else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
+			(void)HELP_STRING;
 			log_fatal("%s\n", HELP_STRING);
 		} else if (!strcmp(argv[i], "-v") || !strcmp(argv[i], "--version")) {
+			(void)VERSION_STRING;
 			log_fatal("%s\n", VERSION_STRING);
 		} else if (!strcmp(argv[i], "-f") || !strcmp(argv[i], "--file")) {
 			server_check_arg(argc, ++i);
@@ -851,8 +855,10 @@ static void *__handle_events(void *arg)
 		if (client_sock == worker->sock) {
 			log_debug("new connection");
 
-			if (__handle_new_connection(worker) < 0)
+			if (__handle_new_connection(worker) < 0) {
+				(void)client_sock;
 				log_fatal("__handle_new_connection() failed: %s\n", strerror(errno));
+			}
 
 			continue;
 		}
