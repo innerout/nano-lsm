@@ -284,9 +284,8 @@ par_scanner par_init_scanner(par_handle handle, struct par_key *key, par_seek_mo
 
 	struct scanner *scanner = (struct scanner *)calloc(1, sizeof(struct scanner));
 	struct par_scanner *p_scanner = (struct par_scanner *)calloc(1, sizeof(struct par_scanner));
-
 	struct db_handle *internal_db_handle = (struct db_handle *)handle;
-
+	scanner->tree_descriptor = NULL;
 	scanner_seek(scanner, internal_db_handle, seek_key_splice, scanner_mode);
 	if (malloced)
 		free(seek_key_splice);
@@ -393,13 +392,15 @@ struct par_value par_get_value(par_scanner sc)
 // cppcheck-suppress unusedFunction
 par_ret_code par_sync(par_handle handle)
 {
-	struct db_handle *parallax = (struct db_handle *)handle;
-	RWLOCK_WRLOCK(&parallax->db_desc->L0.guard_of_level.rx_lock);
-	spin_loop(&(parallax->db_desc->L0.active_operations), 0);
-	uint8_t active_tree = parallax->db_desc->L0.active_tree;
-	pr_flush_L0(parallax->db_desc, active_tree);
-	parallax->db_desc->L0.allocation_txn_id[active_tree] = regl_start_txn(parallax->db_desc);
-	RWLOCK_UNLOCK(&parallax->db_desc->L0.guard_of_level.rx_lock);
+	//TODO(gxanth): This needs to be reimplemented
+	return PAR_FAILURE;
+	// struct db_handle *parallax = (struct db_handle *)handle;
+	// RWLOCK_WRLOCK(&parallax->db_desc->L0.guard_of_level.rx_lock);
+	// spin_loop(&(parallax->db_desc->L0.active_operations), 0);
+	// uint8_t active_tree = parallax->db_desc->L0.active_tree;
+	// pr_flush_L0(parallax->db_desc, active_tree);
+	// parallax->db_desc->L0.allocation_txn_id[active_tree] = regl_start_txn(parallax->db_desc);
+	// RWLOCK_UNLOCK(&parallax->db_desc->L0.guard_of_level.rx_lock);
 	return PAR_SUCCESS;
 }
 

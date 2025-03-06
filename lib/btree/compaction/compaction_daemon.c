@@ -60,8 +60,10 @@ struct compaction_daemon *compactiond_create(struct db_handle *handle, bool do_n
 static struct compaction_request *compactiond_compact_L0(struct compaction_daemon *daemon, uint8_t L0_tree_id,
 							 uint8_t L1_tree_id)
 {
-	const struct L0_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
-	struct device_level *level_1 = daemon->db_handle->db_desc->dev_levels[1];
+	struct LSM_tree_descriptor *tree_descriptor = NULL;
+	assert(tree_descriptor);
+	struct L0_descriptor *level_0 = &tree_descriptor->L0;
+	struct device_level *level_1 = tree_descriptor->dev_levels[1];
 
 	for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
 		if (level_0->tree_status[i] == BT_COMPACTION_IN_PROGRESS) {
@@ -80,7 +82,7 @@ static struct compaction_request *compactiond_compact_L0(struct compaction_daemo
 		return NULL;
 	}
 
-	if (level_is_compacting(daemon->db_handle->db_desc->dev_levels[1])) {
+	if (level_is_compacting(level_1)) {
 		log_trace("Not compacting L0 Level 1 is compacting");
 		return NULL;
 	}
@@ -90,8 +92,8 @@ static struct compaction_request *compactiond_compact_L0(struct compaction_daemo
 		return NULL;
 	}
 
-	bt_set_db_status(daemon->db_handle->db_desc, BT_COMPACTION_IN_PROGRESS, 0, L0_tree_id);
-	level_set_comp_in_progress(daemon->db_handle->db_desc->dev_levels[1]);
+	bt_set_db_status(daemon->db_handle->db_desc, level_0, BT_COMPACTION_IN_PROGRESS, 0, L0_tree_id);
+	level_set_comp_in_progress(level_1);
 
 	/*start a compaction*/
 	return compaction_create_req(daemon->db_handle->db_desc, &daemon->db_handle->db_options, UINT64_MAX, UINT64_MAX,
@@ -106,26 +108,29 @@ static void *compactiond_run(void *args)
 	struct db_descriptor *db_desc = handle->db_desc;
 	struct compaction_request *comp_req = NULL;
 	pthread_setname_np(pthread_self(), "compactiond");
-
+	// TODO(gxanth): Think about how the compaction daemon will find out about new compactions
+	struct LSM_tree_descriptor *tree_descriptor = NULL;
 	while (1) {
+		if (!tree_descriptor)
+			continue;
 	start:
 		sleep(1);
 		// if a level is being compacted continue
 		for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
-			if (level_is_compacting(db_desc->dev_levels[level_id])) {
+			if (level_is_compacting(tree_descriptor->dev_levels[level_id])) {
 				goto start;
 			}
 		}
 		// check if L0 is compacting
 		for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
-			if (db_desc->L0.tree_status[i] == BT_COMPACTION_IN_PROGRESS) {
+			if (tree_descriptor->L0.tree_status[i] == BT_COMPACTION_IN_PROGRESS) {
 				goto start;
 			}
 		}
 		// if all level0 trees are empty wakeup clients
 		bool L0_is_empty = true;
 		for (int i = 0; i < NUM_TREES_PER_LEVEL; i++) {
-			if (db_desc->L0.level_size[i] > 0) {
+			if (tree_descriptor->L0.level_size[i] > 0) {
 				L0_is_empty = false;
 				break;
 			}
@@ -152,16 +157,16 @@ static void *compactiond_run(void *args)
 		if (comp_req)
 			++daemon->next_L0_tree_to_compact;
 
-		int active_tree = db_desc->L0.active_tree;
-		if (db_desc->L0.tree_status[active_tree] == BT_COMPACTION_IN_PROGRESS) {
+		int active_tree = tree_descriptor->L0.active_tree;
+		if (tree_descriptor->L0.tree_status[active_tree] == BT_COMPACTION_IN_PROGRESS) {
 			uint8_t next_active_tree = active_tree < NUM_TREES_PER_LEVEL - 1 ? active_tree + 1 : 0;
-			if (db_desc->L0.tree_status[next_active_tree] == BT_NO_COMPACTION) {
+			if (tree_descriptor->L0.tree_status[next_active_tree] == BT_NO_COMPACTION) {
 				/*Acquire guard lock and wait writers to finish*/
-				if (RWLOCK_WRLOCK(&db_desc->L0.guard_of_level.rx_lock)) {
+				if (RWLOCK_WRLOCK(&tree_descriptor->L0.guard_of_level.rx_lock)) {
 					log_fatal("Failed to acquire guard lock");
 					BUG_ON();
 				}
-				spin_loop(&(db_desc->L0.active_operations), 0);
+				spin_loop(&(tree_descriptor->L0.active_operations), 0);
 				/*fill L0 recovery log  info*/
 				db_desc->small_log_start_segment_dev_offt = db_desc->small_log.tail_dev_offt;
 				log_debug("Setting db_desc->small_log_start_segment_dev_offt to %lu",
@@ -173,15 +178,15 @@ static void *compactiond_run(void *args)
 				db_desc->big_log_start_offt_in_segment = db_desc->big_log.size % SEGMENT_SIZE;
 				/*done now atomically change active tree*/
 
-				db_desc->L0.active_tree = next_active_tree;
-				db_desc->L0.scanner_epoch += 1;
-				db_desc->L0.epoch[active_tree] = db_desc->L0.scanner_epoch;
+				tree_descriptor->L0.active_tree = next_active_tree;
+				tree_descriptor->L0.scanner_epoch += 1;
+				tree_descriptor->L0.epoch[active_tree] = tree_descriptor->L0.scanner_epoch;
 				log_debug("Next active tree %u for L0 of DB: %s", next_active_tree,
 					  db_desc->db_superblock->db_name);
 				/*Acquire a new transaction id for the next_active_tree*/
-				db_desc->L0.allocation_txn_id[next_active_tree] = regl_start_txn(db_desc);
+				tree_descriptor->L0.allocation_txn_id[next_active_tree] = regl_start_txn(db_desc);
 				/*Release guard lock*/
-				if (RWLOCK_UNLOCK(&db_desc->L0.guard_of_level.rx_lock)) {
+				if (RWLOCK_UNLOCK(&tree_descriptor->L0.guard_of_level.rx_lock)) {
 					log_fatal("Failed to acquire guard lock");
 					BUG_ON();
 				}
@@ -199,9 +204,9 @@ static void *compactiond_run(void *args)
 			/*Start a compaction from L0 to L1. Flush L0 prior to compaction from L0 to L1*/
 			log_debug("Flushing L0 for region:%s tree:[0][%u]", db_desc->db_superblock->db_name,
 				  compaction_get_src_tree(comp_req));
-			pr_flush_L0(db_desc, compaction_get_src_tree(comp_req));
+			pr_flush_L0(db_desc, &tree_descriptor->L0, compaction_get_src_tree(comp_req));
 			compaction_set_dst_tree(comp_req, 1);
-			assert(db_desc->L0.root[compaction_get_src_tree(comp_req)] != NULL);
+			assert(tree_descriptor->L0.root[compaction_get_src_tree(comp_req)] != NULL);
 
 			parallax_callbacks_t par_callbacks = db_desc->parallax_callbacks;
 			if (are_parallax_callbacks_set(par_callbacks) &&
@@ -212,8 +217,8 @@ static void *compactiond_run(void *args)
 					par_cb.build_index_L0_compaction_started_cb(context);
 			}
 
-			if (pthread_create(&db_desc->L0.compaction_thread[compaction_get_src_tree(comp_req)], NULL,
-					   compaction, comp_req) != 0) {
+			if (pthread_create(&tree_descriptor->L0.compaction_thread[compaction_get_src_tree(comp_req)],
+					   NULL, compaction, comp_req) != 0) {
 				log_fatal("Failed to start compaction");
 				BUG_ON();
 			}
@@ -223,11 +228,11 @@ static void *compactiond_run(void *args)
 
 		bool split_LSM = true;
 		for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
-			bool level_compacting = level_is_compacting(db_desc->dev_levels[level_id]);
-			bool level_overflow = level_has_overflow(db_desc->dev_levels[level_id], 0);
+			bool level_compacting = level_is_compacting(tree_descriptor->dev_levels[level_id]);
+			bool level_overflow = level_has_overflow(tree_descriptor->dev_levels[level_id], 0);
 			if (level_id == MAX_LEVELS - 1) {
-				level_overflow = last_level_has_overflow(db_desc->dev_levels[level_id], 0,
-									 db_desc->dev_levels[level_id - 1]);
+				level_overflow = last_level_has_overflow(tree_descriptor->dev_levels[level_id], 0,
+									 tree_descriptor->dev_levels[level_id - 1]);
 			}
 
 			if (level_compacting || !level_overflow) {
@@ -236,23 +241,24 @@ static void *compactiond_run(void *args)
 			}
 		}
 		// finally check if L0 is full
-		if (db_desc->L0.level_size[daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL] <
-		    db_desc->L0.max_level_size) {
+		if (tree_descriptor->L0.level_size[daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL] <
+		    tree_descriptor->L0.max_level_size) {
 			split_LSM = false;
 		}
 		for (uint8_t i = 0; i < NUM_TREES_PER_LEVEL; i++) {
-			if (db_desc->L0.tree_status[i] == BT_COMPACTION_IN_PROGRESS) {
+			if (tree_descriptor->L0.tree_status[i] == BT_COMPACTION_IN_PROGRESS) {
 				split_LSM = false;
 				break;
 			}
 		}
-		active_tree = db_desc->L0.active_tree;
+		active_tree = tree_descriptor->L0.active_tree;
 		if (split_LSM) {
 			//print level sizes
-			log_trace("L0 size %lu",
-				  db_desc->L0.level_size[daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL]);
+			log_trace(
+				"L0 size %lu",
+				tree_descriptor->L0.level_size[daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL]);
 			for (uint8_t i = 1; i < MAX_LEVELS; i++) {
-				log_trace("Level %u size: %lu", i, level_get_size(db_desc->dev_levels[i], 0));
+				log_trace("Level %u size: %lu", i, level_get_size(tree_descriptor->dev_levels[i], 0));
 			}
 			log_trace("Splitting LSM tree for L0 tree id %u",
 				  daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL);
@@ -261,34 +267,36 @@ static void *compactiond_run(void *args)
 				compaction_create_req(db_desc, &handle->db_options, UINT64_MAX, UINT64_MAX, 0,
 						      next_L0_tree, MAX_LEVELS - 1, 1);
 
-			assert(db_desc->L0.tree_status[next_L0_tree] == BT_NO_COMPACTION);
+			assert(tree_descriptor->L0.tree_status[next_L0_tree] == BT_NO_COMPACTION);
 			/*Acquire guard lock and wait writers to finish*/
-			if (RWLOCK_WRLOCK(&db_desc->L0.guard_of_level.rx_lock)) {
+			if (RWLOCK_WRLOCK(&tree_descriptor->L0.guard_of_level.rx_lock)) {
 				log_fatal("Failed to acquire guard lock");
 				BUG_ON();
 			}
-			spin_loop(&(db_desc->L0.active_operations), 0);
+			spin_loop(&(tree_descriptor->L0.active_operations), 0);
 			db_desc->writes_enabled = false;
 			db_desc->split_in_action = true;
-			bt_set_db_status(daemon->db_handle->db_desc, BT_COMPACTION_IN_PROGRESS, 0, next_L0_tree);
-			if (RWLOCK_UNLOCK(&db_desc->L0.guard_of_level.rx_lock)) {
+			bt_set_db_status(daemon->db_handle->db_desc, &tree_descriptor->L0, BT_COMPACTION_IN_PROGRESS, 0,
+					 next_L0_tree);
+			if (RWLOCK_UNLOCK(&tree_descriptor->L0.guard_of_level.rx_lock)) {
 				log_fatal("Failed to release guard lock");
 				BUG_ON();
 			}
 			for (uint8_t level_id = 1; level_id < MAX_LEVELS; ++level_id) {
-				assert(level_is_compacting(db_desc->dev_levels[level_id]) == false);
-				level_set_comp_in_progress(db_desc->dev_levels[level_id]);
+				assert(level_is_compacting(tree_descriptor->dev_levels[level_id]) == false);
+				level_set_comp_in_progress(tree_descriptor->dev_levels[level_id]);
 			}
 			compaction_set_dst_tree(split_comp_req, 1);
 			++daemon->next_L0_tree_to_compact;
-			level_start_comp_thread(db_desc->dev_levels[MAX_LEVELS - 1], compaction, split_comp_req);
+			level_start_comp_thread(tree_descriptor->dev_levels[MAX_LEVELS - 1], compaction,
+						split_comp_req);
 			goto start;
 		}
 
 		// rest of levels
 		for (uint8_t level_id = 1; level_id < MAX_LEVELS - 1; ++level_id) {
-			struct device_level *src_level = db_desc->dev_levels[level_id];
-			struct device_level *dst_level = db_desc->dev_levels[level_id + 1];
+			struct device_level *src_level = tree_descriptor->dev_levels[level_id];
+			struct device_level *dst_level = tree_descriptor->dev_levels[level_id + 1];
 
 			if (false == level_has_overflow(src_level, 0)) {
 				log_trace("src level is not full %d", level_id);
@@ -307,14 +315,14 @@ static void *compactiond_run(void *args)
 				continue;
 			}
 			log_trace("Compacting level %d to %d", level_id, level_id + 1);
-			level_set_comp_in_progress(db_desc->dev_levels[level_id]);
-			level_set_comp_in_progress(db_desc->dev_levels[level_id + 1]);
+			level_set_comp_in_progress(tree_descriptor->dev_levels[level_id]);
+			level_set_comp_in_progress(tree_descriptor->dev_levels[level_id + 1]);
 
 			//compaction request will get a txn in its constructor
 			struct compaction_request *comp_req_p = compaction_create_req(
 				db_desc, &handle->db_options, UINT64_MAX, UINT64_MAX, level_id, 0, level_id + 1, 1);
-			level_start_comp_thread(db_desc->dev_levels[compaction_get_dst_level(comp_req_p)], compaction,
-						comp_req_p);
+			level_start_comp_thread(tree_descriptor->dev_levels[compaction_get_dst_level(comp_req_p)],
+						compaction, comp_req_p);
 			break;
 		}
 	}
@@ -370,10 +378,10 @@ void compactiond_close(struct compaction_daemon *daemon)
 }
 
 // cppcheck-suppress unusedFunction
-void compactiond_force_L0_compaction(struct compaction_daemon *daemon)
+void compactiond_force_L0_compaction(struct compaction_daemon *daemon, struct L0_descriptor *L0)
 {
 	assert(daemon);
-	struct L0_descriptor *level_0 = &daemon->db_handle->db_desc->L0;
+	struct L0_descriptor *level_0 = L0;
 	int tree_id = daemon->next_L0_tree_to_compact % NUM_TREES_PER_LEVEL;
 	level_0->level_size[tree_id] = level_0->max_level_size;
 	compactiond_interrupt(daemon);

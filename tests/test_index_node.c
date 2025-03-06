@@ -194,9 +194,13 @@ static uint32_t insert_and_verify_pivots(db_handle *handle, const unsigned char 
 	log_info("Now testing splits ...");
 
 	struct bt_rebalance_result split_res = {
-		.left_child = (struct node_header *)seg_get_index_node(handle->db_desc, 0, 0, 0),
-		.right_child = (struct node_header *)seg_get_index_node(handle->db_desc, 0, 0, 0)
+		0
+		// .left_child = (struct node_header *)seg_get_index_node(handle->db_desc, 0, 0, 0),
+		// .right_child = (struct node_header *)seg_get_index_node(handle->db_desc, 0, 0, 0)
 	};
+	// TODO(gxanth): Fix this after implementing the LSM tree
+	assert(0);
+	BUG_ON();
 	struct index_node_split_request request = { .node = node,
 						    .left_child = (struct index_node *)split_res.left_child,
 						    .right_child = (struct index_node *)split_res.right_child };

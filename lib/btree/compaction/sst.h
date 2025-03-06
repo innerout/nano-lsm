@@ -16,7 +16,8 @@ struct kv_splice_base;
  *@param level_id id of the level that this SST belongs to
   *@return a pointer to the SST object
 */
-struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32_t level_id, bool enable_bfs);
+struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, struct LSM_tree_descriptor *tree_descriptor,
+		       uint32_t level_id, bool enable_bfs);
 
 /**
  *@brief Appends a kv pair in an SST (assumes that splices arrive in sorted order)

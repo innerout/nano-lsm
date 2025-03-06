@@ -4,6 +4,7 @@
 #include "../btree_node.h"
 #include "../index_node.h"
 #include "../kv_pairs.h"
+#include "../scanner/scanner.h"
 #include <stdbool.h>
 #include <stdint.h>
 struct level_compaction_scanner;
@@ -361,19 +362,19 @@ bool level_remove_sst(struct device_level *level, struct sst_meta *sst, uint32_t
 //level scanner staff
 /**
  * @brief Initializes a scanner for the device level.
- * @param database pointer to the database object
+ * @param scanner pointer to the database object
  * @param level_id id of the level to create a scanner
  * @param tree_id id of the tree within the level to create the scanner
  * @return pointer to the level_scanner_dev object or NULL on failure
 */
-struct level_scanner_dev *level_scanner_dev_init(db_handle *database, uint8_t level_id, uint8_t tree_id);
+struct level_scanner_dev *level_scanner_dev_init(struct scanner *scanner, uint8_t level_id, uint8_t tree_id);
 
 /**
   * @brief Seeks to a key greater or equal to the start_key_splice.
   * @param dev_level_scanner pointer to the dev_level_scanner object
   * @param start_key_splice pointer to the splice to seek for
   * @param is_greater if true seeks to the first key greater than the start_key_splice
-  * @return true on success or false in no keey greater or equal to the start_key_splice
+  * @return true on success or false in no key greater or equal to the start_key_splice
   * is found
 */
 bool level_scanner_dev_seek(struct level_scanner_dev *dev_level_scanner, struct key_splice *start_key_splice,

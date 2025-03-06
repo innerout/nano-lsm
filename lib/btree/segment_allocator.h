@@ -22,7 +22,8 @@ struct node_header;
 // IWYU pragma: no_forward_declare index_node
 
 /*functions for index nodes*/
-struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason);
+struct index_node *seg_get_index_node(struct db_descriptor *db_desc, struct LSM_tree_descriptor *tree_descriptor,
+				      uint8_t level_id, uint8_t tree_id, char reason);
 
 struct index_node *seg_get_index_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
@@ -32,11 +33,13 @@ void seg_free_index_node_header(struct db_descriptor *db_desc, uint8_t level_id,
 void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, struct index_node *inode);
 
 /*function for leaf nodes*/
-struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
+struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, struct LSM_tree_descriptor *tree_descriptor,
+				    uint8_t level_id, uint8_t tree_id);
 
 struct leaf_node *seg_get_leaf_node_header(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
-struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
+struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, struct LSM_tree_descriptor *tree_descriptor,
+					    uint8_t level_id, uint8_t tree_id);
 /*log related*/
 segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_type log_type, uint64_t txn_id);
 
@@ -44,5 +47,5 @@ void seg_free_segment(struct db_descriptor *db_desc, uint64_t txn_id, uint64_t s
 
 // struct segment_header *get_segment_for_lsm_level_IO(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id);
 
-uint64_t seg_free_L0(struct db_descriptor *db_desc, uint8_t tree_id);
+uint64_t seg_free_L0(struct db_descriptor *db_desc, struct LSM_tree_descriptor *tree_descriptor, uint8_t tree_id);
 #endif

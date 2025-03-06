@@ -12,6 +12,7 @@
 #include "../kv_pairs.h"
 //old school
 // #include "bloom_filter.h"
+#include "../../scanner/scanner.h"
 #include "dev_index.h"
 #include "dev_leaf.h"
 #include "sst.h"
@@ -519,16 +520,16 @@ struct level_scanner_dev {
 	uint8_t tree_id;
 };
 
-struct level_scanner_dev *level_scanner_dev_init(db_handle *database, uint8_t level_id, uint8_t tree_id)
+struct level_scanner_dev *level_scanner_dev_init(struct scanner *scanner, uint8_t level_id, uint8_t tree_id)
 {
 	struct level_scanner_dev *level_scanner = calloc(1UL, sizeof(*level_scanner));
-	level_scanner->db = database;
+	level_scanner->db = scanner->db;
 	level_scanner->level_id = level_id;
-	level_scanner->level = database->db_desc->dev_levels[level_id];
+	level_scanner->level = scanner->tree_descriptor->dev_levels[level_id];
 	level_scanner->root = NULL;
 
-	level_scanner->leaf_api = level_get_leaf_api(database->db_desc->dev_levels[level_id]);
-	level_scanner->index_api = level_get_index_api(database->db_desc->dev_levels[level_id]);
+	level_scanner->leaf_api = level_get_leaf_api(scanner->tree_descriptor->dev_levels[level_id]);
+	level_scanner->index_api = level_get_index_api(scanner->tree_descriptor->dev_levels[level_id]);
 	level_scanner->leaf = NULL;
 	level_scanner->tree_id = tree_id;
 	level_scanner->leaf_iter = level_scanner->leaf_api->leaf_create_empty_iter();

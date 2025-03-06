@@ -27,7 +27,7 @@ bool compactiond_start(struct compaction_daemon *daemon, pthread_t *context);
 void compactiond_notify_all(struct compaction_daemon *daemon);
 void compactiond_wait(struct compaction_daemon *daemon);
 void compactiond_interrupt(struct compaction_daemon *daemon);
-void compactiond_force_L0_compaction(struct compaction_daemon *daemon);
+void compactiond_force_L0_compaction(struct compaction_daemon *daemon, struct L0_descriptor *L0);
 
 void compactiond_close(struct compaction_daemon *daemon);
 

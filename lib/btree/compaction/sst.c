@@ -284,8 +284,10 @@ static char *sst_get_space(struct sst *sst, size_t size, bool is_leaf)
 	return node;
 }
 
-struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32_t level_id, bool enable_bfs)
+struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, struct LSM_tree_descriptor *tree_descriptor,
+		       uint32_t level_id, bool enable_bfs)
 {
+	assert(tree_descriptor);
 	log_debug("Are BLOOM_FILTER enabled? %s for DB: %s", enable_bfs ? "YES" : "NO",
 		  handle->db_desc->db_superblock->db_name);
 	struct sst_meta *sst_meta = calloc(1UL, sizeof(struct sst_meta));
@@ -324,8 +326,8 @@ struct sst *sst_create(uint32_t size, uint64_t txn_id, db_handle *handle, uint32
 
 	sst->meta->header->sst_dev_offt = sst_allocate_space(sst);
 
-	sst->leaf_api = level_get_leaf_api(handle->db_desc->dev_levels[level_id]);
-	sst->index_api = level_get_index_api(handle->db_desc->dev_levels[level_id]);
+	sst->leaf_api = level_get_leaf_api(tree_descriptor->dev_levels[level_id]);
+	sst->index_api = level_get_index_api(tree_descriptor->dev_levels[level_id]);
 	for (int i = 0; i < MAX_HEIGHT; i++) {
 		sst->last_node[i] = (struct node_header *)(i == 0 ? sst_get_space(sst, LEAF_NODE_SIZE, true) :
 								    sst_get_space(sst, INDEX_NODE_SIZE, false));

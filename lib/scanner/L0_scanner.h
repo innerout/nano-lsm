@@ -10,6 +10,7 @@ struct key_splice;
 struct node_header;
 
 struct L0_scanner {
+	struct L0_descriptor *L0;
 	struct kv_splice_base splice;
 	db_handle *db;
 	stackT stack;
@@ -27,7 +28,8 @@ struct L0_scanner {
  * @param tree_id
  * @returns true on success false on failure
  */
-bool L0_scanner_init(struct L0_scanner *L0_scanner, db_handle *database, uint8_t level_id, uint8_t tree_id);
+bool L0_scanner_init(struct L0_scanner *L0_scanner, struct L0_descriptor *L0, db_handle *database, uint8_t level_id,
+		     uint8_t tree_id);
 
 /**
  * @brief Posistions a previously initialized level scanner to the corresponding key value pair.
@@ -55,7 +57,8 @@ bool L0_scanner_get_next(struct L0_scanner *L0_scanner);
  * @brief Allocates and initializes a compaction scanner. The main difference
  * is that it returns either kv pairs or kv separated kv pairs.
  */
-struct L0_scanner *L0_scanner_init_compaction_scanner(db_handle *database, uint8_t level_id, uint8_t tree_id);
+struct L0_scanner *L0_scanner_init_compaction_scanner(db_handle *database, struct L0_descriptor *L0, uint8_t level_id,
+						      uint8_t tree_id);
 void L0_scanner_close(struct L0_scanner *L0_scanner);
 
 void L0_scanner_read_lock_node(struct L0_scanner *L0_scanner, struct node_header *node);

@@ -25,6 +25,7 @@ struct scanner {
 	struct L0_scanner L0_scanner[NUM_TREES_PER_LEVEL];
 	struct level_scanner_dev *dev_scanner[MAX_LEVELS];
 	struct sh_heap heap;
+	struct LSM_tree_descriptor *tree_descriptor;
 	db_handle *db;
 	void *keyValue;
 	int32_t type; /*to be removed also*/

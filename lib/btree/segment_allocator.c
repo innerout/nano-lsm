@@ -84,14 +84,15 @@ static void set_link_segments_metadata(struct link_segments_metadata *req, segme
 	req->available_space = available_space;
 }
 
-static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, uint32_t size)
+static void *get_space(struct db_descriptor *db_desc, struct LSM_tree_descriptor *tree_descriptor, uint8_t level_id,
+		       uint8_t tree_id, uint32_t size)
 {
 	if (0 != level_id) {
 		log_fatal("Allocations only for Level-0");
 		_exit(EXIT_FAILURE);
 	}
 
-	struct L0_descriptor *level_desc = &db_desc->L0;
+	struct L0_descriptor *level_desc = &tree_descriptor->L0;
 
 	struct link_segments_metadata req = { .level_desc = level_desc, .tree_id = tree_id };
 	segment_header *new_segment = NULL;
@@ -137,10 +138,11 @@ static void *get_space(struct db_descriptor *db_desc, uint8_t level_id, uint8_t 
 	return node;
 }
 
-struct index_node *seg_get_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, char reason)
+struct index_node *seg_get_index_node(struct db_descriptor *db_desc, struct LSM_tree_descriptor *tree_descriptor,
+				      uint8_t level_id, uint8_t tree_id, char reason)
 {
 	(void)reason;
-	return get_space(db_desc, level_id, tree_id, index_node_get_size());
+	return get_space(db_desc, tree_descriptor, level_id, tree_id, index_node_get_size());
 }
 
 void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, struct index_node *inode)
@@ -152,18 +154,22 @@ void seg_free_index_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_
 	(void)inode;
 }
 
-struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+struct leaf_node *seg_get_leaf_node(struct db_descriptor *db_desc, struct LSM_tree_descriptor *tree_descriptor,
+				    uint8_t level_id, uint8_t tree_id)
 {
-	const struct L0_descriptor *level0 = &db_desc->L0;
+	const struct L0_descriptor *level0 = &tree_descriptor->L0;
 
-	struct leaf_node *leaf = (struct leaf_node *)get_space(db_desc, level_id, tree_id, level0->leaf_size);
+	struct leaf_node *leaf =
+		(struct leaf_node *)get_space(db_desc, tree_descriptor, level_id, tree_id, level0->leaf_size);
 	return leaf;
 }
 
-struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id)
+struct leaf_node *seg_get_dynamic_leaf_node(struct db_descriptor *db_desc, struct LSM_tree_descriptor *tree_descriptor,
+					    uint8_t level_id, uint8_t tree_id)
 {
-	const struct L0_descriptor *level0 = &db_desc->L0;
-	return get_space(db_desc, level_id, tree_id, level0->leaf_size);
+	assert(tree_descriptor);
+	const struct L0_descriptor *level0 = &tree_descriptor->L0;
+	return get_space(db_desc, tree_descriptor, level_id, tree_id, level0->leaf_size);
 }
 
 segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_type log_type, uint64_t txn_id)
@@ -193,9 +199,10 @@ segment_header *seg_get_raw_log_segment(struct db_descriptor *db_desc, enum log_
 	return segment;
 }
 
-uint64_t seg_free_L0(struct db_descriptor *db_desc, uint8_t tree_id)
+uint64_t seg_free_L0(struct db_descriptor *db_desc, struct LSM_tree_descriptor *tree_descriptor, uint8_t tree_id)
 {
-	struct segment_header *curr_segment = db_desc->L0.first_segment[tree_id];
+	assert(tree_descriptor);
+	struct segment_header *curr_segment = tree_descriptor->L0.first_segment[tree_id];
 	if (!curr_segment) {
 		log_debug("Level [%u][%u] is free nothing to do", 0, tree_id);
 		return 0;
@@ -211,8 +218,8 @@ uint64_t seg_free_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	}
 
 	log_debug("Freed in-memory L0 level [%u][%u] for db %s", 0, tree_id, db_desc->db_superblock->db_name);
-	assert(space_freed == db_desc->L0.offset[tree_id] % SEGMENT_SIZE ?
-		       db_desc->L0.offset[tree_id] :
-		       db_desc->L0.offset[tree_id] / SEGMENT_SIZE + SEGMENT_SIZE);
+	assert(space_freed == tree_descriptor->L0.offset[tree_id] % SEGMENT_SIZE ?
+		       tree_descriptor->L0.offset[tree_id] :
+		       tree_descriptor->L0.offset[tree_id] / SEGMENT_SIZE + SEGMENT_SIZE);
 	return space_freed;
 }

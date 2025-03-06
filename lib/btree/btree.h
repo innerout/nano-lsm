@@ -22,6 +22,7 @@
 #include "index_node.h"
 #include "lsn.h"
 #include "parallax/structures.h"
+#include "st.h"
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -138,9 +139,18 @@ struct bt_kv_log_address {
 struct bt_kv_log_address bt_get_kv_log_address(struct log_descriptor *log_desc, uint64_t dev_offt);
 void bt_done_with_value_log_address(struct log_descriptor *log_desc, struct bt_kv_log_address *L);
 
-typedef struct db_descriptor {
+/**
+ * @brief A structure that describes a subrange of the LSM tree.
+ */
+struct LSM_tree_descriptor {
 	struct L0_descriptor L0;
 	struct device_level *dev_levels[MAX_LEVELS];
+};
+
+typedef struct db_descriptor {
+	range_tree LSM_ranges;
+	// struct L0_descriptor L0;
+	// struct device_level *dev_levels[MAX_LEVELS];
 #if MEASURE_MEDIUM_INPLACE
 	uint64_t count_medium_inplace;
 #endif
@@ -310,8 +320,8 @@ void *append_key_value_to_log(struct log_operation *req);
 void find_key(struct lookup_operation *get_op);
 int8_t delete_key(db_handle *handle, void *key, uint32_t size);
 
-void bt_set_db_status(struct db_descriptor *db_desc, enum level_compaction_status comp_status, uint8_t level_id,
-		      uint8_t tree_id);
+void bt_set_db_status(struct db_descriptor *db_desc, struct L0_descriptor *L0, enum level_compaction_status comp_status,
+		      uint8_t level_id, uint8_t tree_id);
 
 lock_table *find_lock_position(const lock_table **table, struct node_header *node);
 

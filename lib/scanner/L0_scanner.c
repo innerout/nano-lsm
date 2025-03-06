@@ -19,8 +19,7 @@ void L0_scanner_read_lock_node(struct L0_scanner *L0_scanner, struct node_header
 {
 	assert(0 == L0_scanner->level_id);
 
-	struct lock_table *lock =
-		find_lock_position((const lock_table **)L0_scanner->db->db_desc->L0.level_lock_table, node);
+	struct lock_table *lock = find_lock_position((const lock_table **)L0_scanner->L0->level_lock_table, node);
 	if ((RWLOCK_RDLOCK(&lock->rx_lock)) != 0) {
 		log_fatal("ERROR locking");
 		perror("Reason");
@@ -32,23 +31,25 @@ void L0_scanner_read_unlock_node(struct L0_scanner *L0_scanner, struct node_head
 {
 	assert(0 == L0_scanner->level_id);
 
-	struct lock_table *lock =
-		find_lock_position((const lock_table **)L0_scanner->db->db_desc->L0.level_lock_table, node);
+	struct lock_table *lock = find_lock_position((const lock_table **)L0_scanner->L0->level_lock_table, node);
 	if (RWLOCK_UNLOCK(&lock->rx_lock) != 0) {
 		log_fatal("ERROR locking");
 		BUG_ON();
 	}
 }
 
-bool L0_scanner_init(struct L0_scanner *L0_scanner, db_handle *database, uint8_t level_id, uint8_t tree_id)
+bool L0_scanner_init(struct L0_scanner *L0_scanner, struct L0_descriptor *L0, db_handle *database, uint8_t level_id,
+		     uint8_t tree_id)
 {
 	assert(0 == level_id);
+	assert(L0);
 	memset(L0_scanner, 0x00, sizeof(*L0_scanner));
 	stack_init(&L0_scanner->stack);
 	L0_scanner->db = database;
 	L0_scanner->level_id = level_id;
 	L0_scanner->is_compaction_scanner = false;
-	L0_scanner->root = database->db_desc->L0.root[tree_id];
+	L0_scanner->L0 = L0;
+	L0_scanner->root = L0->root[tree_id];
 
 	return true;
 }
@@ -211,10 +212,12 @@ bool L0_scanner_get_next(struct L0_scanner *L0_scanner)
 	return true;
 }
 
-struct L0_scanner *L0_scanner_init_compaction_scanner(db_handle *database, uint8_t level_id, uint8_t tree_id)
+struct L0_scanner *L0_scanner_init_compaction_scanner(db_handle *database, struct L0_descriptor *L0, uint8_t level_id,
+						      uint8_t tree_id)
 {
+	assert(L0);
 	struct L0_scanner *level_scanner = calloc(1UL, sizeof(struct L0_scanner));
-	if (!L0_scanner_init(level_scanner, database, level_id, tree_id)) {
+	if (!L0_scanner_init(level_scanner, L0, database, level_id, tree_id)) {
 		log_fatal("Failed to initialize scanner");
 		BUG_ON();
 	}

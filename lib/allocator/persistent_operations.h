@@ -32,7 +32,7 @@ void disable_validation_garbage_bytes(void);
  * in L0 during a compaction operation from L0 to L1. As a result, valid tree_id
  * values are from 0 to NUM_TREES_PER_LEVEL-1.
 */
-void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id);
+void pr_flush_L0(struct db_descriptor *db_desc, struct L0_descriptor *L0, uint8_t tree_id);
 
 void pr_read_db_superblock(struct db_descriptor *db_desc);
 

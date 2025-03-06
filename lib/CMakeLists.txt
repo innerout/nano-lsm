@@ -31,6 +31,7 @@ set(LIB_C_SOURCE_FILES
     api/parallax.c
     btree/btree.c
     btree/index_node.c
+    btree/segment-tree.c
     btree/compaction/compaction_daemon.c
     btree/compaction/compaction_worker.c
     btree/dynamic_leaf.c

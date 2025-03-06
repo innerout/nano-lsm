@@ -17,11 +17,12 @@ struct reader_args {
 void *readers(void *args_)
 {
 	struct reader_args *args = (struct reader_args *)args_;
-
+	//TODO(gxanth): Fix this after implementing LSM
+	BUG_ON();
 	db_handle *dbhandle = (db_handle *)args->parallax;
 	for (int i = 0; i < args->num_operations; i++) {
-		uint8_t ticket_id = level_enter_as_reader(dbhandle->db_desc->dev_levels[1]);
-		level_leave_as_reader(dbhandle->db_desc->dev_levels[1], ticket_id);
+		// uint8_t ticket_id = level_enter_as_reader(dbhandle->db_desc->dev_levels[1]);
+		// level_leave_as_reader(dbhandle->db_desc->dev_levels[1], ticket_id);
 	}
 	return NULL;
 }

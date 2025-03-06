@@ -63,30 +63,38 @@ static void flush_segment_in_log(int file_desc, uint64_t file_offset, char *buff
 	}
 }
 
-static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc, uint8_t src_level_id,
+static void pr_flush_allocation_log_and_level_info(struct db_descriptor *db_desc,
+						   struct LSM_tree_descriptor *tree_descriptor, uint8_t src_level_id,
 						   uint8_t dst_level_id, uint8_t tree_id, uint64_t txn_id)
 {
+	assert(db_desc);
+	assert(tree_descriptor);
+	assert(src_level_id < MAX_LEVELS);
+	assert(dst_level_id < MAX_LEVELS);
+	assert(src_level_id < dst_level_id);
+
 	/*Flush my allocations*/
 	struct regl_log_info rul_log = regl_flush_txn(db_desc, txn_id);
 	/*new info about allocation_log*/
-	db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
-	db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
-	db_desc->db_superblock->allocation_log.size = rul_log.size;
-	db_desc->db_superblock->allocation_log.txn_id = rul_log.txn_id;
+	// TODO(gxanth): delete superblock will not be needed in the future
+	// db_desc->db_superblock->allocation_log.head_dev_offt = rul_log.head_dev_offt;
+	// db_desc->db_superblock->allocation_log.tail_dev_offt = rul_log.tail_dev_offt;
+	// db_desc->db_superblock->allocation_log.size = rul_log.size;
+	// db_desc->db_superblock->allocation_log.txn_id = rul_log.txn_id;
 
 	/*zero out Li*/
-	if (src_level_id) {
-		db_desc->db_superblock->level_size[src_level_id][0] = 0;
-		db_desc->db_superblock->num_level_keys[src_level_id][0] = 0;
-	}
+	// if (src_level_id) {
+	// 	db_desc->db_superblock->level_size[src_level_id][0] = 0;
+	// 	db_desc->db_superblock->num_level_keys[src_level_id][0] = 0;
+	// }
 
-	if (dst_level_id)
-		level_save_to_superblock(db_desc->dev_levels[dst_level_id], db_desc->db_superblock, tree_id);
+	// if (dst_level_id)
+	// 	level_save_to_superblock(db_desc->dev_levels[dst_level_id], db_desc->db_superblock, tree_id);
 
 	pr_flush_db_superblock(db_desc);
 }
 
-void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
+void pr_flush_L0(struct db_descriptor *db_desc, struct L0_descriptor *L0, uint8_t tree_id)
 {
 	if (!db_desc->dirty) {
 		log_debug("DB: %s clean nothing to flush ", db_desc->db_superblock->db_name);
@@ -126,7 +134,7 @@ void pr_flush_L0(struct db_descriptor *db_desc, uint8_t tree_id)
 	/*Flush L0 recovery log*/
 	pr_flush_log_tail(db_desc, &db_desc->small_log);
 
-	uint64_t txn_id = db_desc->L0.allocation_txn_id[tree_id];
+	uint64_t txn_id = L0->allocation_txn_id[tree_id];
 
 	/*time to write superblock*/
 	pr_lock_db_superblock(db_desc);
@@ -230,8 +238,8 @@ write_logs_info:;
 	db_desc->db_superblock->small_log_offt_in_start_segment = db_desc->small_log_start_offt_in_segment;
 	db_desc->db_superblock->big_log_start_segment_dev_offt = db_desc->big_log_start_segment_dev_offt;
 	db_desc->db_superblock->big_log_offt_in_start_segment = db_desc->big_log_start_offt_in_segment;
-
-	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
+	struct LSM_tree_descriptor *tree_descriptor = NULL;
+	pr_flush_allocation_log_and_level_info(db_desc, tree_descriptor, level_id - 1, level_id, tree_id, txn_id);
 	pr_unlock_db_superblock(db_desc);
 	regl_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
 }
@@ -240,18 +248,21 @@ write_logs_info:;
 * Flushes compaction from level Lmax where the medium KV pairs are transferred
 * from the medium log to in-place
 */
-static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, uint8_t level_id, uint8_t tree_id, uint64_t txn_id)
+static void pr_flush_Lmax_to_Ln(struct db_descriptor *db_desc, struct LSM_tree_descriptor *tree_descriptor,
+				uint8_t level_id, uint8_t tree_id, uint64_t txn_id)
 {
+	assert(tree_descriptor);
 	// We don't care for the medium KVs at the moment so we omit the flush of the medium log
 	log_debug("Flushing Lmax to Ln! remove return from here gxanth");
 	return;
-	uint64_t new_medium_log_head_offt = level_trim_medium_log(db_desc->dev_levels[level_id], db_desc, txn_id);
+	uint64_t new_medium_log_head_offt =
+		level_trim_medium_log(tree_descriptor->dev_levels[level_id], db_desc, txn_id);
 
 	pr_lock_db_superblock(db_desc);
 	/*new info about medium log after trim operation*/
 	db_desc->medium_log.head_dev_offt = db_desc->db_superblock->medium_log_head_offt = new_medium_log_head_offt;
 
-	pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
+	pr_flush_allocation_log_and_level_info(db_desc, tree_descriptor, level_id - 1, level_id, tree_id, txn_id);
 
 	pr_unlock_db_superblock(db_desc);
 	regl_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
@@ -264,20 +275,23 @@ void pr_flush_compaction(struct db_descriptor *db_desc, const struct par_db_opti
 		pr_flush_L0_to_L1(db_desc, db_options, level_id, tree_id, txn_id);
 		return;
 	}
+	struct LSM_tree_descriptor *tree_descriptor = NULL;
 	/* TODO(gxanth): Note here the design of the manifest log needs rethinking.  */
 	if (level_id == db_desc->level_medium_inplace) {
-		pr_flush_Lmax_to_Ln(db_desc, level_id, tree_id, txn_id);
+		pr_flush_Lmax_to_Ln(db_desc, tree_descriptor, level_id, tree_id, txn_id);
 		return;
 	}
 
 	pr_lock_db_superblock(db_desc);
 	if (src_level_id == 0 && level_id == MAX_LEVELS - 1) {
-		pr_flush_allocation_log_and_level_info(db_desc, src_level_id, level_id, tree_id, txn_id);
+		pr_flush_allocation_log_and_level_info(db_desc, tree_descriptor, src_level_id, level_id, tree_id,
+						       txn_id);
 		for (uint8_t i = 1; i < MAX_LEVELS - 1; i++) {
-			pr_flush_allocation_log_and_level_info(db_desc, i, level_id, tree_id, txn_id);
+			pr_flush_allocation_log_and_level_info(db_desc, tree_descriptor, i, level_id, tree_id, txn_id);
 		}
 	} else {
-		pr_flush_allocation_log_and_level_info(db_desc, level_id - 1, level_id, tree_id, txn_id);
+		pr_flush_allocation_log_and_level_info(db_desc, tree_descriptor, level_id - 1, level_id, tree_id,
+						       txn_id);
 	}
 	pr_unlock_db_superblock(db_desc);
 	regl_apply_txn_buf_freeops_and_destroy(db_desc, txn_id);
@@ -295,6 +309,8 @@ void pr_unlock_db_superblock(struct db_descriptor *db_desc)
 
 void pr_flush_db_superblock(struct db_descriptor *db_desc)
 {
+	// TODO(gxanth): Probably this will be deleted
+	return;
 	int64_t last_lsn_id = lsn_factory_get_ticket(&db_desc->lsn_factory);
 	set_lsn_id(&db_desc->db_superblock->last_lsn, last_lsn_id);
 	uint64_t superblock_offt =
